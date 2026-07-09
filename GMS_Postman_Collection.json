@@ -1,0 +1,425 @@
+{
+  "info": {
+    "name": "MSN Gate Management System",
+    "description": "Phase 1 — Auth & Foundation Testing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "BASE_URL",     "value": "http://localhost:5000" },
+    { "key": "COMPANY_CODE", "value": "1" },
+    { "key": "USER_ID",      "value": "1" },
+    { "key": "GATE_ID",      "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/health"
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login — Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"Admin\",\n  \"password\": \"Admin\",\n  \"companyCode\": 1,\n  \"gateId\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Gates (for login dropdown)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/auth/gates?companyCode=1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup — Gates",
+      "item": [
+        {
+          "name": "Get Gates List",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/setup/gates?tag=1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",      "value": "{{GATE_ID}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Gate",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/setup/gates",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"GATE-01\",\n  \"name\": \"Main Gate\",\n  \"description\": \"Main entrance gate\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Gate",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/api/setup/gates/1",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"GATE-01\",\n  \"name\": \"Main Gate Updated\",\n  \"description\": \"Updated description\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Gate",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/api/setup/gates/1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Restore Gate",
+          "request": {
+            "method": "PATCH",
+            "url": "{{BASE_URL}}/api/setup/gates/1/restore",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Get Gates Dropdown",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/setup/gates/dropdown",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup — Securities",
+      "item": [
+        {
+          "name": "Get Securities List",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/setup/securities?tag=1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Security",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/setup/securities",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SEC-001\",\n  \"name\": \"Ravi Kumar\",\n  \"mobile\": \"9876543210\",\n  \"gender\": \"Male\",\n  \"photo\": \"\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup — Designations",
+      "item": [
+        {
+          "name": "Get Designations List",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/setup/designations?tag=1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Designation",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/setup/designations",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"DES-001\",\n  \"name\": \"Security Guard\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup — Locations",
+      "item": [
+        {
+          "name": "Get Locations List",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/setup/locations?tag=1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Location",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/setup/locations",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"LOC-001\",\n  \"name\": \"Server Room\",\n  \"description\": \"Server room checkpoint\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Visitors",
+      "item": [
+        {
+          "name": "Get Visitors List (Today)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/visitors",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",      "value": "{{GATE_ID}}" }
+            ]
+          }
+        },
+        {
+          "name": "Get Visitors List (By Date)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/visitors?date=2025-07-09",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",      "value": "{{GATE_ID}}" }
+            ]
+          }
+        },
+        {
+          "name": "Get Visitor By Mobile",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/visitors/mobile/9876543210",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Visitor (New Entry)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/visitors",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",       "value": "{{GATE_ID}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"9876543210\",\n  \"visitorType\": \"Guest\",\n  \"visitorId\": \"VID-001\",\n  \"name\": \"Ravi Kumar\",\n  \"company\": \"ABC Corp\",\n  \"toMeet\": \"Mr. Manager\",\n  \"remarks\": \"Meeting about project\",\n  \"vehicleNo\": \"TN01AB1234\",\n  \"photo\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Visitor Out (Mark Exit)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{BASE_URL}}/api/visitors/1/out",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vehicles",
+      "item": [
+        {
+          "name": "Get Vehicles List (Today)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/vehicles",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",      "value": "{{GATE_ID}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create Vehicle (New Entry)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/vehicles",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",       "value": "{{GATE_ID}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleNo\": \"TN01AB1234\",\n  \"mobile\": \"9876543210\",\n  \"visitType\": \"Delivery\",\n  \"name\": \"Driver Name\",\n  \"company\": \"Delivery Co\",\n  \"warehouse\": \"WH-A\",\n  \"remarks\": \"Goods delivery\",\n  \"photo\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Vehicle Out (Mark Exit)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{BASE_URL}}/api/vehicles/1/out",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Security Patrol",
+      "item": [
+        {
+          "name": "Get Patrol Logs (Today)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/patrol",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",      "value": "{{GATE_ID}}" }
+            ]
+          }
+        },
+        {
+          "name": "Mark Checkpoint Visited",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/patrol",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "gateid",       "value": "{{GATE_ID}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locationId\": 1,\n  \"remarks\": \"All clear\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get Users (Active)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/users?tag=1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/api/users",
+            "header": [
+              { "key": "userid",       "value": "{{USER_ID}}" },
+              { "key": "companycode",  "value": "{{COMPANY_CODE}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userName\": \"guard01\",\n  \"pwd\": \"Guard@123\",\n  \"active\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Get User Permissions",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/users/1/permissions",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        },
+        {
+          "name": "Get Grouped Menus",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/api/users/menus/1",
+            "header": [
+              { "key": "userid",      "value": "{{USER_ID}}" },
+              { "key": "companycode", "value": "{{COMPANY_CODE}}" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,58 +1,55 @@
-const erpAuthService = require("../services/erpAuthService");
-const { validateLogin } = require("../utils/validate");
+// controllers/authController.js
+const authService = require("../services/authService");
 
+const DEFAULT_COMPANY_CODE = parseInt(process.env.DEFAULT_COMPANY_CODE) || 1;
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/auth/login
+// Body: { username, password, companyCode, gateId }
+// ─────────────────────────────────────────────────────────────
 exports.login = async (req, res, next) => {
   try {
-    const error = validateLogin(req.body);
+    const { username, password, companyCode, gateId } = req.body;
 
-    if (error) {
+    if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: error
+        message: "Username and password are required",
       });
     }
 
-    const { username, password } = req.body;
-
-    const result = await erpAuthService.login(username, password);
+    const code   = companyCode || DEFAULT_COMPANY_CODE;
+    const result = await authService.login(username, password, code);
 
     if (!result.success) {
-      return res.status(401).json(result);
+      return res.status(401).json({ success: false, message: result.message });
     }
 
-    res.json({
-      success: true,
-      data: result
+    return res.json({
+      success:     true,
+      data: {
+        userId:      result.userId,
+        userName:    result.userName,
+        companyCode: result.companyCode,
+        gateId:      gateId || result.gateId,
+        gateName:    result.gateName,
+      },
     });
-
   } catch (err) {
-    console.error("🔥 LOGIN ERROR:", err); // ✅ ADD THIS
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Internal Server Error"
-    });
+    next(err);
   }
 };
 
-
-// TEMP APIs
-exports.register = async (req, res) => {
-  res.json({
-    success: true,
-    message: "Register API working"
-  });
-};
-
-exports.changePassword = async (req, res) => {
-  res.json({
-    success: true,
-    message: "Change password API working"
-  });
-};
-
-exports.getMe = async (req, res) => {
-  res.json({
-    success: true,
-    message: "GetMe API working"
-  });
+// ─────────────────────────────────────────────────────────────
+// GET /api/auth/gates?companyCode=1
+// Returns gates list for login screen dropdown
+// ─────────────────────────────────────────────────────────────
+exports.getGates = async (req, res, next) => {
+  try {
+    const companyCode = parseInt(req.query.companyCode) || DEFAULT_COMPANY_CODE;
+    const gates       = await authService.getGatesForLogin(companyCode);
+    return res.json({ success: true, data: gates });
+  } catch (err) {
+    next(err);
+  }
 };

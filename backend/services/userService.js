@@ -1,17 +1,13 @@
-// backend/services/userService.js
-// ✅ FIX: getUserPermissions uses EXACT column names from SP logs:
-//   menus  → menudid, SubMenuName, menuname
-//   rights → MenuDUid, MRead/MWrite/MUpdate/MDelete/MPrint (boolean true/false)
-
+// services/userService.js
 const repo = require("../repositories/userRepo");
 
-async function getUsers(tag) {
-  return await repo.getUsers(tag);
+async function getUsers({ companyCode, tag }) {
+  return await repo.getUsers({ companyCode, tag });
 }
 
-async function createUser({ userName, pwd, active }) {
-  const result = await repo.iudUser({ mode: 1, userName, pwd, active, uid: 0 });
-  const row = result[0];
+async function createUser({ companyCode, userName, pwd, active }) {
+  const result = await repo.iudUser({ companyCode, mode: 1, uid: 0, userName, pwd, active: active ?? 1 });
+  const row    = result[0];
   return {
     success:         row?.ResponseCode === 101,
     userId:          row?.UserId        ?? null,
@@ -19,62 +15,40 @@ async function createUser({ userName, pwd, active }) {
   };
 }
 
-async function updateUser({ uid, userName, pwd, active }) {
-  const result = await repo.iudUser({ mode: 2, uid, userName, pwd, active });
+async function updateUser({ companyCode, uid, userName, pwd, active }) {
+  const result = await repo.iudUser({ companyCode, mode: 2, uid, userName, pwd, active });
   return result[0];
 }
 
-async function deleteUser({ uid }) {
-  const result = await repo.iudUser({ mode: 3, uid, userName: "", pwd: "", active: 0 });
+async function deleteUser({ companyCode, uid }) {
+  const result = await repo.iudUser({ companyCode, mode: 3, uid, userName: "", pwd: "", active: 0 });
   return result[0];
 }
 
-async function restoreUser({ uid }) {
-  return await repo.undeleteUser(uid);
+async function restoreUser({ companyCode, uid }) {
+  return await repo.undeleteUserById({ companyCode, uid });
 }
 
-// ── getUserPermissions ────────────────────────────────────────────────────────
-//
-// SP: PR_Get_MenuData_ForUsermanagement
-// recordsets[0] (menus) columns confirmed from logs:
-//   menumuid    → parent menu ID
-//   menuname    → parent menu label  e.g. "Setup"
-//   menudid     → sub-menu ID        ← THE KEY
-//   SubMenuName → sub-menu label     e.g. "Department"
-//
-// recordsets[1] (rights) columns confirmed from logs:
-//   MenuDUid    → matches menudid above
-//   MRead, MWrite, MUpdate, MDelete, MPrint  ← booleans (true/false)
-//   UID         → rights row ID
-//
-async function getUserPermissions(userId) {
-  const raw    = await repo.getUserPermissions(userId);
+async function getUserPermissions({ companyCode, userId }) {
+  const raw    = await repo.getUserPermissions({ companyCode, userId });
   const menus  = raw.menus  || [];
   const rights = raw.rights || [];
 
-  // Build rights lookup keyed by MenuDUid (exact casing from SP)
   const rightsMap = {};
-  rights.forEach(r => {
-    // MenuDUid is the exact column name confirmed in logs
+  rights.forEach((r) => {
     const key = r.MenuDUid ?? r.menudid ?? r.menuDUid;
     if (key != null) rightsMap[Number(key)] = r;
   });
 
-  // Flatten menus with their permissions
-  const flat = menus
-    .map(m => {
-      // menudid is the exact column name confirmed in logs
+  return menus
+    .map((m) => {
       const mid = Number(m.menudid ?? 0);
       const r   = rightsMap[mid] || {};
-
       return {
-        menuDUid: mid,
-        // SubMenuName = sub-menu display name (e.g. "Department")
+        menuDUid:   mid,
         menuName:   m.SubMenuName ?? m.menuname ?? "",
-        // menuname = parent group label (e.g. "Setup")
         parentMenu: m.menuname    ?? "General",
         permissions: {
-          // SP returns JS booleans → Number(true)=1, Number(false)=0
           MWrite:  Number(r.MWrite  ?? false),
           MRead:   Number(r.MRead   ?? false),
           MUpdate: Number(r.MUpdate ?? false),
@@ -84,15 +58,39 @@ async function getUserPermissions(userId) {
         },
       };
     })
-    .filter(m => m.menuDUid > 0); // skip rows with no valid ID
-
-  return flat; // controller wraps this in { success: true, data: flat }
+    .filter((m) => m.menuDUid > 0);
 }
 
-async function savePermissions(userId, permissions) {
+async function savePermissions({ companyCode, userId, permissions }) {
   const json   = JSON.stringify({ userId, permissions });
-  const result = await repo.savePermissions(json);
+  const result = await repo.savePermissions({ companyCode, json });
   return result[0];
+}
+
+async function getGroupedMenus({ companyCode, userId }) {
+  const rows   = await repo.getUserMenus({ companyCode, userId });
+  const groups = {};
+
+  for (const row of rows) {
+    const parentMenu = row.menuname;
+    const subName    = row.SubMenuName;
+    const subId      = row.menudid;
+    if (!parentMenu || !subName) continue;
+
+    const rights  = await repo.getMenuRights({ companyCode, userId, menuDid: subId });
+    const mWrite  = Number(rights?.MWrite  ?? 0);
+    const mUpdate = Number(rights?.MUpdate ?? 0);
+    const mDelete = Number(rights?.MDelete ?? 0);
+
+    if (!groups[parentMenu]) {
+      groups[parentMenu] = { menu: parentMenu, subMenus: [] };
+    }
+    groups[parentMenu].subMenus.push({
+      id: subId, name: subName, mWrite, mUpdate, mDelete,
+    });
+  }
+
+  return Object.values(groups);
 }
 
 module.exports = {
@@ -103,4 +101,5 @@ module.exports = {
   restoreUser,
   getUserPermissions,
   savePermissions,
+  getGroupedMenus,
 };

@@ -1,204 +1,59 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const Company = require('../models/Company');
-const AdminUser = require('../models/AdminUser');
+// middleware/authMiddleware.js
+// GMS uses simple header-based auth (userid + companycode)
+// Same pattern as previous project but extended with companyCode + gateId
 
+const DEFAULT_COMPANY_CODE = process.env.DEFAULT_COMPANY_CODE || 1;
 
 // ─────────────────────────────────────────────────────────────
-// 🟢 1. ERP SIMPLE AUTH (FOR SQL APIs - NEW)
+// GMS PROTECT — validates userid + companyCode headers
+// All ERP/GMS API calls must pass these headers
 // ─────────────────────────────────────────────────────────────
-const erpProtect = (req, res, next) => {
+const gmsProtect = (req, res, next) => {
   try {
-    const userId = req.headers["userid"];
+    const userId      = req.headers["userid"];
+    const companyCode = req.headers["companycode"] || DEFAULT_COMPANY_CODE;
+    const gateId      = req.headers["gateid"] || null;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized - userId missing"
+        message: "Unauthorized — userId missing in headers",
       });
     }
 
-    req.erpUser = { userId: parseInt(userId) };
-    next();
-
-  } catch (err) {
-    console.error("erpProtect error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "ERP authentication error"
-    });
-  }
-};
-
-
-// ─────────────────────────────────────────────────────────────
-// 🔐 2. COMPANY USER JWT AUTH (EXISTING)
-// ─────────────────────────────────────────────────────────────
-const protect = async (req, res, next) => {
-  try {
-    let token;
-
-    if (req.headers.authorization?.startsWith('Bearer '))
-      token = req.headers.authorization.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Access denied. No token provided.'
-      });
-    }
-
-    let decoded;
-
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET, {
-        issuer: 'printmixbox',
-        audience: 'printmixbox-client',
-      });
-    } catch (e) {
-      if (e.name === 'TokenExpiredError') {
-        return res.status(401).json({
-          success: false,
-          message: 'Token expired. Please login again.',
-          code: 'TOKEN_EXPIRED'
-        });
-      }
-
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token.',
-        code: 'TOKEN_INVALID'
-      });
-    }
-
-    const [user, company] = await Promise.all([
-      User.findById(decoded.userId),
-      Company.findById(decoded.companyId),
-    ]);
-
-    if (!user || !user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found or inactive.'
-      });
-    }
-
-    if (!company || !company.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: 'Company account inactive.'
-      });
-    }
-
-    req.user = {
-      userId: decoded.userId,
-      companyId: decoded.companyId,
-      username: decoded.username,
-      role: decoded.role
+    req.gmsUser = {
+      userId:      parseInt(userId),
+      companyCode: parseInt(companyCode),
+      gateId:      gateId ? parseInt(gateId) : null,
     };
 
     next();
-
   } catch (err) {
-    console.error('protect middleware:', err);
+    console.error("gmsProtect error:", err);
     return res.status(500).json({
       success: false,
-      message: 'Authentication error.'
+      message: "Authentication error",
     });
   }
 };
 
-
 // ─────────────────────────────────────────────────────────────
-// 🛡️ 3. ADMIN JWT AUTH (EXISTING)
+// ERROR HANDLER MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
-const adminProtect = async (req, res, next) => {
-  try {
-    let token;
-
-    if (req.headers.authorization?.startsWith('Bearer '))
-      token = req.headers.authorization.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Admin access denied. No token.'
-      });
-    }
-
-    let decoded;
-
-    try {
-      decoded = jwt.verify(
-        token,
-        process.env.JWT_ADMIN_SECRET || process.env.JWT_SECRET,
-        {
-          issuer: 'printmixbox-admin',
-          audience: 'printmixbox-admin-panel'
-        }
-      );
-    } catch (e) {
-      if (e.name === 'TokenExpiredError') {
-        return res.status(401).json({
-          success: false,
-          message: 'Admin session expired.',
-          code: 'TOKEN_EXPIRED'
-        });
-      }
-
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid admin token.'
-      });
-    }
-
-    const admin = await AdminUser.findById(decoded.adminId);
-
-    if (!admin || !admin.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Admin account not found or inactive.'
-      });
-    }
-
-    req.admin = {
-      adminId: decoded.adminId,
-      username: decoded.username,
-      role: decoded.role
-    };
-
-    next();
-
-  } catch (err) {
-    console.error('adminProtect middleware:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Admin authentication error.'
-    });
-  }
+const notFound = (req, res, next) => {
+  const err = new Error(`Route not found: ${req.originalUrl}`);
+  err.status = 404;
+  next(err);
 };
 
-
-// ─────────────────────────────────────────────────────────────
-// 🔐 4. ROLE-BASED AUTHORIZATION
-// ─────────────────────────────────────────────────────────────
-const authorize = (...roles) => (req, res, next) => {
-  if (!roles.includes(req.user?.role)) {
-    return res.status(403).json({
-      success: false,
-      message: `Access denied. Required role: ${roles.join(' or ')}.`
-    });
-  }
-  next();
+const errorHandler = (err, req, res, next) => {
+  const status = err.status || 500;
+  console.error(`[ERROR] ${status} — ${err.message}`);
+  res.status(status).json({
+    success: false,
+    message: err.message || "Internal Server Error",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
 };
 
-
-// ─────────────────────────────────────────────────────────────
-// 📦 EXPORTS
-// ─────────────────────────────────────────────────────────────
-module.exports = {
-  protect,
-  adminProtect,
-  authorize,
-  erpProtect   // 👈 NEW (USE THIS FOR SQL APIs)
-};
+module.exports = { gmsProtect, notFound, errorHandler };
