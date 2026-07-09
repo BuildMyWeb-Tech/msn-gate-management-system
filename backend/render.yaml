@@ -1,0 +1,91 @@
+# backend/render.yaml
+# ─────────────────────────────────────────────────────────────
+#  Render Blueprint — PrintMixBox API
+#  Docs: https://render.com/docs/blueprint-spec
+#
+#  HOW TO USE:
+#  1. Push this repo to GitHub
+#  2. Go to render.com → New → Blueprint
+#  3. Connect your GitHub repo
+#  4. Render will detect this file and create the service
+#  5. Set the SECRET environment variables in the Render dashboard
+# ─────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: printmixbox-api
+    runtime: node
+    rootDir: backend           # tells Render the backend is in /backend
+    plan: free                 # upgrade to starter ($7/mo) for production
+    region: singapore          # change to: oregon | frankfurt | ohio | virginia
+
+    buildCommand: npm install
+    startCommand: node server.js
+
+    # Zero-downtime health check
+    healthCheckPath: /health
+
+    # Auto-deploy on every push to main
+    autoDeploy: true
+    branch: main
+
+    envVars:
+      # ── Server ──────────────────────────────
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000           # Render assigns 10000 by default
+
+      # ── MongoDB Atlas ────────────────────────
+      # Set this in Render dashboard → never commit the real value
+      - key: MONGO_URI
+        sync: false            # means: "set manually in dashboard"
+
+      # ── JWT Secrets ──────────────────────────
+      # Render can auto-generate secure random values
+      - key: JWT_SECRET
+        generateValue: true
+
+      - key: JWT_ADMIN_SECRET
+        generateValue: true
+
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # ── Email (Google Workspace / Gmail SMTP) ─
+      # Set these manually in Render dashboard
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+
+      - key: EMAIL_PORT
+        value: 587
+
+      - key: EMAIL_USER
+        sync: false            # your Gmail / Google Workspace address
+
+      - key: EMAIL_PASS
+        sync: false            # Gmail App Password (16-char, no spaces)
+
+      - key: EMAIL_FROM
+        value: "PrintMixBox <noreply@printmixbox.io>"
+
+      # ── CORS ────────────────────────────────
+      # Set to your Vercel production URL after deploying frontend
+      - key: FRONTEND_URL
+        value: https://saas-platform-buildmyweb.vercel.app
+
+      # Optional: comma-separated extra allowed origins (e.g. Vercel preview URLs)
+      - key: EXTRA_ORIGINS
+        value: ""
+
+      # ── Rate limiting ────────────────────────
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+
+      - key: RATE_LIMIT_MAX
+        value: 200
+
+      # ── Admin seed ───────────────────────────
+      - key: ADMIN_EMAIL
+        value: admin@printmixbox.io
