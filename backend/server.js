@@ -53,8 +53,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-// Handle OPTIONS preflight for all routes (Express v5 / Node 24 compatible)
-app.options("/(.*)", cors(corsOptions));
+// cors middleware handles OPTIONS preflight automatically
 app.use(cors(corsOptions));
 
 // ── Rate limit ───────────────────────────────────────────────
