@@ -29,6 +29,8 @@ const getAllowedOrigins = () => {
     "http://localhost:5173",
     "http://localhost:3000",
     "http://localhost:4173",
+    "https://msn-gate-management-system.vercel.app/",
+    "https://msn-gate-management-system.vercel.app"
   ];
   if (process.env.FRONTEND_URL) list.push(process.env.FRONTEND_URL.trim());
   return list;
