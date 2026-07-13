@@ -1,23 +1,9 @@
-// src/components/PrivateRoute.jsx
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function PrivateRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) {
-    return (
-      <div className="page-loader">
-        <div className="pmb-spinner" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return children;
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <div className="spinner-wrap"><div className="spinner" /></div>;
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
 }

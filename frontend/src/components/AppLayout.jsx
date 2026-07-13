@@ -1,355 +1,139 @@
-// frontend/src/components/AppLayout.jsx
-// Logo image served from: frontend/public/brand/logo.png  → URL: /brand/logo.png
-// Falls back to text if image is missing
-// ✅ SESSION TIMEOUT: auto-logout after 5 min idle (useSessionTimeout hook)
-
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { getMenus } from '../services/authService';
-import { useSessionTimeout } from '../hooks/useSessionTimeout';   // ← NEW
-
+import React, { useState } from "react";
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
-  Settings, ClipboardList, Printer, Package,
-  Truck, Users, LayoutDashboard, ChevronDown,
-  Building2, UserCog, Users2, Factory, Workflow,
-  FileText, LogOut, User, PanelLeftClose, PanelLeftOpen,
-  ChevronRight,
-} from 'lucide-react';
+  LayoutDashboard, Users, Car, Shield, DoorOpen,
+  Settings, UserCog, LogOut, Menu, X,
+  Building2, MapPin, BadgeCheck, Layers
+} from "lucide-react";
 
-/* ── Icon maps ─────────────────────────────────────────────── */
-const MENU_ICONS = {
-  'Setup':           Settings,
-  'Planning':        ClipboardList,
-  'Pre Press':       Printer,
-  'Press':           Printer,
-  'Post Press':      Package,
-  'Logistics':       Truck,
-  'User Management': Users,
+const NAV = [
+  { section: "Operations" },
+  { path: "/dashboard",             label: "Dashboard",        Icon: LayoutDashboard },
+  { path: "/visitors",              label: "Visitors",         Icon: Users },
+  { path: "/vehicles",              label: "Vehicles",         Icon: Car },
+  { path: "/patrol",                label: "Security Patrol",  Icon: Shield },
+  { section: "Setup" },
+  { path: "/setup/gates",           label: "Gates",            Icon: Layers },
+  { path: "/setup/securities",      label: "Securities",       Icon: BadgeCheck },
+  { path: "/setup/designations",    label: "Designations",     Icon: Building2 },
+  { path: "/setup/locations",       label: "Locations",        Icon: MapPin },
+  { section: "Administration" },
+  { path: "/users",                 label: "User Management",  Icon: UserCog },
+];
+
+const PAGE_LABELS = {
+  "/dashboard":           "Dashboard",
+  "/visitors":            "Visitors",
+  "/visitors/new":        "New Visitor",
+  "/vehicles":            "Vehicles",
+  "/vehicles/new":        "New Vehicle",
+  "/patrol":              "Security Patrol",
+  "/setup/gates":         "Gates",
+  "/setup/securities":    "Securities",
+  "/setup/designations":  "Designations",
+  "/setup/locations":     "Locations",
+  "/users":               "User Management",
 };
 
-const SUBMENU_ICONS = {
-  'Department':  Building2,
-  'Designation': UserCog,
-  'Employees':   Users2,
-  'Machines':    Factory,
-  'Process':     Workflow,
-  'Job Card':    FileText,
-  'Customers':   Users2,
-};
-
-function getRoute(menuName, subName) {
-  const section = menuName.toLowerCase().replace(/\s+/g, '-');
-  const sub     = subName.toLowerCase().replace(/\s+/g, '-');
-  return `/${section}/${sub}`;
-}
-
-/* ── Sidebar brand logo ─────────────────────────────────────── */
-function SidebarLogo({ collapsed }) {
-  const [imgFailed, setImgFailed] = useState(false);
-
-  if (collapsed) {
-    return (
-      <div className="app-sidebar-brand app-sidebar-brand--collapsed">
-        <div className="app-logo-icon-only">
-          {!imgFailed ? (
-            <img
-              src="/brand/logo.png"
-              alt="MP"
-              className="app-sidebar-logo-img-sm"
-              onError={() => setImgFailed(true)}
-            />
-          ) : (
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>MP</span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="app-sidebar-brand">
-      <div className="app-sidebar-logo">
-        {!imgFailed ? (
-          <img
-            src="/brand/logo.png"
-            alt="Mr. Press Management"
-            className="app-sidebar-logo-img"
-            onError={() => setImgFailed(true)}
-          />
-        ) : (
-          <div className="app-logo-icon">
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>MP</span>
-          </div>
-        )}
-        <div className="app-logo-text">
-          <span className="app-logo-name">Mr. Press</span>
-          <span className="app-logo-sub">Management</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Sidebar menu item ──────────────────────────────────────── */
-function SidebarMenu({ group, isOpen, onToggle, collapsed }) {
-  const location = useLocation();
-  const Icon = MENU_ICONS[group.menu] || Settings;
-
-  const isAnyChildActive = group.subMenus.some(sub =>
-    location.pathname.startsWith(getRoute(group.menu, sub.name))
-  );
-
-  if (collapsed) {
-    return (
-      <div className="sidebar-menu-group sidebar-menu-group--collapsed" title={group.menu}>
-        <button
-          className={`sidebar-menu-btn sidebar-menu-btn--icon ${isAnyChildActive ? 'has-active' : ''}`}
-          onClick={onToggle}
-        >
-          <span className="sidebar-menu-icon"><Icon size={18} /></span>
-        </button>
-        {isOpen && (
-          <div className="sidebar-submenu-flyout">
-            <div className="sidebar-flyout-label">{group.menu}</div>
-            {group.subMenus.map(sub => {
-              const route   = getRoute(group.menu, sub.name);
-              const SubIcon = SUBMENU_ICONS[sub.name];
-              return (
-                <NavLink
-                  key={sub.id}
-                  to={route}
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item sidebar-flyout-item ${isActive ? 'active' : ''}`
-                  }
-                >
-                  {SubIcon && <SubIcon size={14} style={{ marginRight: 8 }} />}
-                  {sub.name}
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="sidebar-menu-group">
-      <button
-        className={`sidebar-menu-btn ${isAnyChildActive ? 'has-active' : ''}`}
-        onClick={onToggle}
-      >
-        <span className="sidebar-menu-icon"><Icon size={18} /></span>
-        <span className="sidebar-menu-label">{group.menu}</span>
-        <ChevronDown size={16} className={`sidebar-menu-chevron ${isOpen ? 'open' : ''}`} />
-      </button>
-
-      <div className={`sidebar-submenu ${isOpen ? 'open' : ''}`}>
-        {group.subMenus.map(sub => {
-          const route   = getRoute(group.menu, sub.name);
-          const SubIcon = SUBMENU_ICONS[sub.name];
-          return (
-            <NavLink
-              key={sub.id}
-              to={route}
-              className={({ isActive }) =>
-                `sidebar-submenu-item ${isActive ? 'active' : ''}`
-              }
-            >
-              {SubIcon && <SubIcon size={14} style={{ marginRight: 8 }} />}
-              {sub.name}
-            </NavLink>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ── User Dropdown ──────────────────────────────────────────── */
-function UserDropdown({ username, onLogout, onProfile }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const initials = username
-    ? username.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
-
-  return (
-    <div className="topbar-user-wrap" ref={ref}>
-      <button className="topbar-user-btn" onClick={() => setOpen(v => !v)}>
-        <div className="topbar-avatar">{initials}</div>
-        <span className="topbar-username">{username || 'User'}</span>
-        <ChevronDown size={14} className={`topbar-chevron ${open ? 'open' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="topbar-dropdown">
-          <div className="topbar-dropdown-header">
-            <div className="topbar-dropdown-avatar">{initials}</div>
-            <div>
-              <div className="topbar-dropdown-name">{username || 'User'}</div>
-              <div className="topbar-dropdown-role">Member</div>
-            </div>
-          </div>
-          <div className="topbar-dropdown-divider" />
-          <button
-            className="topbar-dropdown-item"
-            onClick={() => { setOpen(false); onProfile(); }}
-          >
-            <User size={14} />
-            Profile
-          </button>
-          <button
-            className="topbar-dropdown-item topbar-dropdown-item--danger"
-            onClick={() => { setOpen(false); onLogout(); }}
-          >
-            <LogOut size={14} />
-            Logout
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   MAIN AppLayout
-═══════════════════════════════════════════════════════════ */
 export default function AppLayout() {
-  const { userId, username, logout, menuGroups } = useAuth();
-
+  const { user, logout } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
+  const [open, setOpen] = useState(false);
 
-  const [openGroups,  setOpenGroups]  = useState({});
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [collapsed,   setCollapsed]   = useState(false);
+  const handleLogout = () => { logout(); navigate("/login", { replace: true }); };
+  const close = () => setOpen(false);
 
-  /* ── Session timeout: logout after 5 min idle ── */
-  const handleTimeout = useCallback(() => {
-    logout();
-    navigate('/login');
-  }, [logout, navigate]);
+  const currentLabel = (() => {
+    const path = location.pathname;
+    if (PAGE_LABELS[path]) return PAGE_LABELS[path];
+    if (path.startsWith("/visitors/edit/")) return "Edit Visitor";
+    if (path.startsWith("/vehicles/edit/")) return "Edit Vehicle";
+    if (path.startsWith("/users/") && path.includes("permissions")) return "User Permissions";
+    return "";
+  })();
 
-  useSessionTimeout(handleTimeout);   // ← NEW: single line wires up the timer
-
-  /* ── Mobile: close sidebar on route change ── */
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
-
-  /* ── Body scroll lock when mobile sidebar open ── */
-  useEffect(() => {
-    document.body.style.overflow = sidebarOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [sidebarOpen]);
-
-  const toggleGroup = useCallback((name) => {
-    setOpenGroups(prev => ({ ...prev, [name]: !prev[name] }));
-  }, []);
-
-  const handleLogout  = () => { logout(); navigate('/login'); };
-  const handleProfile = () => { navigate('/profile'); };
+  const initials = (user?.userName || "U").slice(0, 2).toUpperCase();
 
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className="app-layout">
+      {/* Mobile overlay */}
+      <div className={`sidebar-overlay ${open ? "open" : ""}`} onClick={close} />
 
-      {/* ── Sidebar ── */}
-      <aside className={`app-sidebar ${sidebarOpen ? 'open' : ''} ${collapsed ? 'app-sidebar--collapsed' : ''}`}>
+      {/* Sidebar */}
+      <aside className={`sidebar ${open ? "open" : ""}`}>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-icon">
+            <Shield size={18} color="#000" strokeWidth={2.5} />
+          </div>
+          <div className="sidebar-brand-text">
+            <div className="sidebar-brand-name">MSN Gate</div>
+            <div className="sidebar-brand-sub">Management System</div>
+          </div>
+        </div>
 
-        <SidebarLogo collapsed={collapsed} />
-
-        <button
-          className="sidebar-toggle-btn"
-          onClick={() => setCollapsed(v => !v)}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed
-            ? <PanelLeftOpen  size={16} />
-            : <PanelLeftClose size={16} />
-          }
-        </button>
-
-        <nav className="app-sidebar-nav">
-          <NavLink
-            to="/dashboard"
-            className={({ isActive }) =>
-              `sidebar-dashboard-link ${isActive ? 'active' : ''} ${collapsed ? 'sidebar-dashboard-link--icon' : ''}`
-            }
-            title={collapsed ? 'Dashboard' : undefined}
-          >
-            <span className="sidebar-menu-icon"><LayoutDashboard size={18} /></span>
-            {!collapsed && <span className="sidebar-menu-label">Dashboard</span>}
-          </NavLink>
-
-          {menuGroups.length === 0 ? (
-            !collapsed && (
-              <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>
-                Loading menus…
-              </div>
+        <nav className="sidebar-nav">
+          {NAV.map((item, i) =>
+            item.section ? (
+              <div key={i} className="sidebar-section">{item.section}</div>
+            ) : (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+                onClick={close}
+              >
+                <item.Icon size={16} className="nav-icon" />
+                {item.label}
+              </NavLink>
             )
-          ) : (
-            menuGroups.map(group => (
-              <SidebarMenu
-                key={group.menu}
-                group={group}
-                isOpen={!!openGroups[group.menu]}
-                onToggle={() => toggleGroup(group.menu)}
-                collapsed={collapsed}
-              />
-            ))
           )}
         </nav>
 
-        <div className="app-sidebar-footer">
-          <button className="app-logout-btn" onClick={handleLogout} title="Logout">
-            <LogOut size={18} className="icon" />
+        <div className="sidebar-footer">
+          <div className="sidebar-user-card">
+            <div className="sidebar-avatar">{initials}</div>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{user?.userName || "User"}</div>
+              <div className="sidebar-user-gate">
+                {user?.gateName || (user?.gateId ? `Gate ${user.gateId}` : "No gate")}
+              </div>
+            </div>
+          </div>
+          <button className="btn-logout" onClick={handleLogout}>
+            <LogOut size={14} />
+            Sign Out
           </button>
         </div>
       </aside>
 
-      {sidebarOpen && (
-        <div className="app-sidebar-overlay" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* ── Main area ── */}
-      <div className="app-main">
-        <header className="app-topbar">
-          <button className="app-hamburger" onClick={() => setSidebarOpen(!sidebarOpen)}>
-            {sidebarOpen
-              ? <ChevronRight size={20} />
-              : <PanelLeftOpen size={20} />
-            }
+      {/* Main */}
+      <div className="main-wrap">
+        <header className="topbar">
+          <button className="topbar-hamburger" onClick={() => setOpen(s => !s)} aria-label="Menu">
+            {open ? <X size={20} /> : <Menu size={20} />}
           </button>
-
-          <div className="app-topbar-brand">
-            <img
-              src="/brand/logo.png"
-              alt=""
-              className="app-topbar-logo"
-              onError={e => { e.currentTarget.style.display = 'none'; }}
-            />
-            <span>Mr. Press Management</span>
+          <div className="topbar-breadcrumb">
+            <span className="topbar-title">MSN Gate Management</span>
+            {currentLabel && (
+              <>
+                <span className="topbar-sep">/</span>
+                <span className="topbar-sub">{currentLabel}</span>
+              </>
+            )}
           </div>
-
-          <div style={{ flex: 1 }} />
-
-          <UserDropdown
-            username={username}
-            onLogout={handleLogout}
-            onProfile={handleProfile}
-          />
+          <div className="topbar-right">
+            {(user?.gateName || user?.gateId) && (
+              <div className="topbar-gate-badge">
+                <Layers size={12} />
+                {user.gateName || `Gate ${user.gateId}`}
+              </div>
+            )}
+          </div>
         </header>
 
-        <main className="app-content">
+        <main className="page-content">
           <Outlet />
         </main>
       </div>

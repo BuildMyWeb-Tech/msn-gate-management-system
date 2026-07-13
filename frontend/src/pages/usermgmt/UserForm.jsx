@@ -1,371 +1,122 @@
-// frontend/src/pages/usermgmt/UserForm.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Eye, EyeOff, UserPlus, Save, ArrowLeft, ChevronRight } from "lucide-react";
-import { createUser, updateUser, getUsers } from "../../services/userService";
+import api from "../../services/api";
+import Toast from "../../components/Toast";
+import { ArrowLeft, Save, Eye, EyeOff, UserCog } from "lucide-react";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  PwField — Password input with show/hide toggle
-// ═══════════════════════════════════════════════════════════════════════════════
-function PwField({ id, label, value, onChange, error, placeholder }) {
-  const [show, setShow] = useState(false);
+const EMPTY = { userName: "", pwd: "", active: 1 };
 
-  return (
-    <div className="gm-field">
-      <label className="gm-label" htmlFor={id}>{label}</label>
-      <div style={{ position: "relative" }}>
-        <input
-          id={id}
-          type={show ? "text" : "password"}
-          className={`gm-input${error ? " error" : ""}`}
-          placeholder={placeholder}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          autoComplete="new-password"
-          style={{ paddingRight: 44 }}
-        />
-        <button
-          type="button"
-          onClick={() => setShow(v => !v)}
-          style={{
-            position: "absolute", right: 0, top: 0, bottom: 0, width: 44,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "none", border: "none", color: "#64748b", cursor: "pointer",
-          }}
-          tabIndex={-1}
-        >
-          {show ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      </div>
-      {error && <div className="gm-field-err">{error}</div>}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  ConfirmPwField — Confirm password with match indicator
-// ═══════════════════════════════════════════════════════════════════════════════
-function ConfirmPwField({ value, onChange, error, match }) {
-  const [show, setShow] = useState(false);
-
-  const borderColor =
-    match === true  ? "#22c55e" :
-    match === false ? "#f87171" : undefined;
-
-  return (
-    <>
-      <div style={{ position: "relative" }}>
-        <input
-          id="cpwd"
-          type={show ? "text" : "password"}
-          className={`gm-input${error ? " error" : ""}`}
-          placeholder="Re-enter password"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          autoComplete="new-password"
-          style={{ paddingRight: 44, ...(borderColor ? { borderColor } : {}) }}
-        />
-        <button
-          type="button"
-          onClick={() => setShow(v => !v)}
-          style={{
-            position: "absolute", right: 0, top: 0, bottom: 0, width: 44,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "none", border: "none", color: "#64748b", cursor: "pointer",
-          }}
-          tabIndex={-1}
-        >
-          {show ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      </div>
-      {error && <div className="gm-field-err">{error}</div>}
-      {!error && match === true  && (
-        <div style={{ fontSize: 12, color: "#22c55e", marginTop: 4 }}>
-          ✓ Passwords match
-        </div>
-      )}
-      {!error && match === false && (
-        <div style={{ fontSize: 12, color: "#f87171", marginTop: 4 }}>
-          ✗ Passwords do not match
-        </div>
-      )}
-    </>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  MAIN UserForm
-// ═══════════════════════════════════════════════════════════════════════════════
 export default function UserForm() {
   const navigate = useNavigate();
   const { id }   = useParams();
   const isEdit   = Boolean(id);
 
-  const [userName, setUserName] = useState("");
-  const [pwd,      setPwd]      = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [active,   setActive]   = useState(1);
-  const [errors,   setErrors]   = useState({});
-  const [saving,   setSaving]   = useState(false);
-  const [apiError, setApiError] = useState("");
-  const [loaded,   setLoaded]   = useState(!isEdit);
+  const [form, setForm]     = useState(EMPTY);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEdit);
+  const [toast, setToast]   = useState(null);
+  const [showPw, setShowPw] = useState(false);
 
-  // ─── Load existing user in edit mode ───────────────────────────────────────
-  // The API returns userpassword in plaintext, so we load it directly into state.
-  // The eye icon will then reveal it as-is when toggled.
   useEffect(() => {
     if (!isEdit) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const [r1, r0] = await Promise.all([getUsers(1), getUsers(0)]);
-        if (cancelled) return;
-        const user = [...(r1.data || []), ...(r0.data || [])].find(
-          u => u.uid === Number(id)
-        );
-        if (user) {
-          setUserName(user.username      || "");
-          setActive(Number(user.active   ?? 1));
-          setPwd(user.userpassword       || "");   // ← real password from API
-          setConfirm(user.userpassword   || "");   // ← pre-fill confirm to match
-        }
-      } catch {
-        if (!cancelled) setApiError("Failed to load user details");
-      } finally {
-        if (!cancelled) setLoaded(true);
+    Promise.all([
+      api.get("/users?tag=1"),
+      api.get("/users?tag=0"),
+    ]).then(([a, i]) => {
+      const all  = [...(a.data?.data || []), ...(i.data?.data || [])];
+      const user = all.find(u => String(u.Uid || u.uid || u.UserId || u.userId) === String(id));
+      if (user) {
+        setForm({
+          userName: user.UserName || user.userName || user.username || "",
+          pwd:      "",
+          active:   user.Active   ?? user.active ?? 1,
+        });
       }
-    })();
-    return () => { cancelled = true; };
-  }, [id, isEdit]);
+    }).finally(() => setLoading(false));
+  }, [isEdit, id]);
 
-  // ─── Validation ────────────────────────────────────────────────────────────
+  const onChange = e => {
+    const { name, value, type, checked } = e.target;
+    setForm(p => ({ ...p, [name]: type === "checkbox" ? (checked ? 1 : 0) : value }));
+    if (errors[name]) setErrors(p => ({ ...p, [name]: "" }));
+  };
+
   const validate = () => {
     const e = {};
-    if (!userName.trim()) e.userName = "Username is required";
-
-    if (!isEdit) {
-      // CREATE — password mandatory
-      if (!pwd)                e.pwd     = "Password is required";
-      else if (pwd.length < 4) e.pwd     = "Minimum 4 characters";
-      if (!confirm)            e.confirm = "Please confirm your password";
-      else if (pwd !== confirm) e.confirm = "Passwords do not match";
-
-    } else {
-      // EDIT — password is pre-filled; validate if present
-      if (pwd && pwd.length < 4)        e.pwd     = "Minimum 4 characters";
-      if (pwd && confirm !== pwd)       e.confirm = "Passwords do not match";
-      if (pwd && !confirm)              e.confirm = "Please confirm your password";
-    }
-
+    if (!form.userName.trim()) e.userName = "Username is required";
+    if (!isEdit && !form.pwd)  e.pwd      = "Password is required";
     return e;
   };
 
-  // ─── Submit ────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setApiError("");
-    if (!loaded) return;
-
+  const onSave = async () => {
     const errs = validate();
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-
+    if (Object.keys(errs).length) { setErrors(errs); return; }
     setSaving(true);
     try {
-      if (isEdit) {
-        // Send password only if the user has something in the field
-        const cleanPwd = pwd || undefined;
-        await updateUser(id, { userName: userName.trim(), pwd: cleanPwd, active });
-        navigate(`/user-management/users/permissions/${id}`);
-      } else {
-        const res = await createUser({ userName: userName.trim(), pwd, active });
-        if (!res.success) {
-          setApiError(res.message || "Failed to create user");
-          setSaving(false);
-          return;
-        }
-        const newUserId = res.data?.userId;
-        if (!newUserId) {
-          setApiError(
-            "User saved but ID not returned. Go back and use Edit to set permissions."
-          );
-          setSaving(false);
-          return;
-        }
-        navigate(`/user-management/users/permissions/${newUserId}`);
-      }
+      const payload = { userName: form.userName, active: form.active };
+      if (form.pwd) payload.pwd = form.pwd;
+      if (isEdit) { await api.put(`/users/${id}`, payload);  setToast({ type: "success", msg: "User updated" }); }
+      else        { await api.post("/users", payload);        setToast({ type: "success", msg: "User created" }); }
+      setTimeout(() => navigate("/users"), 1200);
     } catch (err) {
-      setApiError(err.response?.data?.message || err.message || "Operation failed");
-      setSaving(false);
-    }
+      setToast({ type: "error", msg: err.response?.data?.message || "Failed to save" });
+    } finally { setSaving(false); }
   };
 
-  // ─── Password match indicator ───────────────────────────────────────────────
-  const pwMatch =
-    pwd && confirm
-      ? pwd === confirm
-      : null;
+  if (loading) return <div className="spinner-page"><div className="spinner" /></div>;
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="um-form-page">
-      <div className="um-form-wrap">
-
-        {/* ── Breadcrumb ── */}
-        <div className="um-breadcrumb">
-          <button
-            className="um-breadcrumb-back"
-            onClick={() => navigate("/user-management/users")}
-          >
-            <ArrowLeft size={14} /> Users
-          </button>
-          <ChevronRight size={13} className="um-breadcrumb-sep" />
-          <span className="um-breadcrumb-active">
-            Step 1: {isEdit ? "Edit User" : "Create User"}
-          </span>
-          <ChevronRight size={13} className="um-breadcrumb-sep" />
-          <span className="um-breadcrumb-next">Step 2: Permissions</span>
+    <div>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      <div className="page-hdr">
+        <div className="page-hdr-left">
+          <h1 style={{ display: "flex", alignItems: "center", gap: 8 }}><UserCog size={20} />{isEdit ? "Edit User" : "New User"}</h1>
         </div>
+        <button className="btn btn-ghost" onClick={() => navigate("/users")}><ArrowLeft size={15} />Back</button>
+      </div>
 
-        {/* ── Step indicator ── */}
-        <div className="um-steps">
-          <div className="um-step um-step--active">
-            <div className="um-step-num">1</div>
-            <div className="um-step-label">User Details</div>
-          </div>
-          <div className="um-step-line" />
-          <div className="um-step um-step--pending">
-            <div className="um-step-num">2</div>
-            <div className="um-step-label">Permissions</div>
-          </div>
-        </div>
+      <div style={{ maxWidth: 480 }}>
+        <div className="card">
+          <div className="card-header"><span className="card-title"><UserCog size={15} />User Details</span></div>
 
-        {/* ── Card ── */}
-        <div className="um-card">
-          <div className="um-card-header">
-            <div className="um-card-icon"><UserPlus size={18} /></div>
-            <div>
-              <div className="um-card-title">{isEdit ? "Edit User" : "New User"}</div>
-              <div className="um-card-subtitle">
-                {isEdit
-                  ? "Update details, then proceed to permissions"
-                  : "Create account, then assign menu permissions"}
-              </div>
+          <div className="form-group">
+            <label className="form-label">Username <span className="req">*</span></label>
+            <input name="userName" className={`form-input ${errors.userName ? "err" : ""}`}
+              value={form.userName} onChange={onChange} placeholder="Enter username"
+              autoCapitalize="none" />
+            {errors.userName && <div className="form-error">{errors.userName}</div>}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Password {isEdit && <span style={{ fontSize: 11, color: "var(--text3)" }}>(leave blank to keep current)</span>} {!isEdit && <span className="req">*</span>}</label>
+            <div className="pw-wrap">
+              <input name="pwd" type={showPw ? "text" : "password"}
+                className={`form-input ${errors.pwd ? "err" : ""}`}
+                value={form.pwd} onChange={onChange}
+                placeholder={isEdit ? "New password (optional)" : "Set password"}
+                style={{ paddingRight: 42 }} />
+              <button type="button" className="pw-toggle" onClick={() => setShowPw(s => !s)}>
+                {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
             </div>
+            {errors.pwd && <div className="form-error">{errors.pwd}</div>}
           </div>
 
-          {/* ── Loading skeleton ── */}
-          {isEdit && !loaded ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 0" }}>
-              {[1, 2, 3].map(i => (
-                <div
-                  key={i}
-                  style={{
-                    height: 42, borderRadius: 8,
-                    background: "rgba(255,255,255,0.05)",
-                    animation: "pulse 1.5s ease-in-out infinite",
-                  }}
-                />
-              ))}
-              <div style={{ fontSize: 13, color: "#475569", textAlign: "center", marginTop: 4 }}>
-                Loading user details…
-              </div>
-            </div>
-          ) : (
-            <>
-              {apiError && <div className="gm-modal-error">{apiError}</div>}
+          <div className="form-group">
+            <label className="form-label" style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input name="active" type="checkbox" checked={form.active === 1} onChange={onChange} style={{ width: 16, height: 16, accentColor: "var(--accent)", cursor: "pointer" }} />
+              Active User
+            </label>
+          </div>
 
-              <form onSubmit={handleSubmit} autoComplete="off">
-
-                {/* ── Username ── */}
-                <div className="gm-field">
-                  <label className="gm-label" htmlFor="uname">
-                    Username <span className="gm-req">*</span>
-                  </label>
-                  <input
-                    id="uname"
-                    type="text"
-                    className={`gm-input${errors.userName ? " error" : ""}`}
-                    placeholder="Enter username"
-                    value={userName}
-                    onChange={e => setUserName(e.target.value)}
-                    autoComplete="off"
-                  />
-                  {errors.userName && (
-                    <div className="gm-field-err">{errors.userName}</div>
-                  )}
-                </div>
-
-                {/* ── Password ── */}
-                <PwField
-                  id="pwd"
-                  label={isEdit ? "Password" : "Password *"}
-                  value={pwd}
-                  onChange={setPwd}
-                  error={errors.pwd}
-                  placeholder={isEdit ? "Edit or leave as-is" : "Enter password"}
-                />
-
-                {/* ── Confirm Password ── */}
-                <div className="gm-field">
-                  <label className="gm-label" htmlFor="cpwd">
-                    Confirm Password{" "}
-                    {!isEdit && <span className="gm-req">*</span>}
-                  </label>
-                  <ConfirmPwField
-                    value={confirm}
-                    onChange={setConfirm}
-                    error={errors.confirm}
-                    match={pwMatch}
-                  />
-                </div>
-
-                {/* ── Account Status ── */}
-                <div className="gm-field">
-                  <label className="gm-label">Account Status</label>
-                  <div className="um-radio-group">
-                    <label
-                      className={`um-radio-label ${active === 1 ? "um-radio-label--active-sel" : ""}`}
-                      onClick={() => setActive(1)}
-                    >
-                      <span className={`um-radio-circle ${active === 1 ? "um-radio-circle--active" : ""}`} />
-                      Active
-                    </label>
-                    <label
-                      className={`um-radio-label ${active === 0 ? "um-radio-label--inactive-sel" : ""}`}
-                      onClick={() => setActive(0)}
-                    >
-                      <span className={`um-radio-circle ${active === 0 ? "um-radio-circle--inactive" : ""}`} />
-                      Inactive
-                    </label>
-                  </div>
-                </div>
-
-                {/* ── Actions ── */}
-                <div className="um-form-actions">
-                  <button
-                    type="button"
-                    className="gm-btn-cancel"
-                    onClick={() => navigate("/user-management/users")}
-                    disabled={saving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="gm-btn-save um-submit-btn"
-                    disabled={saving || !loaded}
-                  >
-                    {saving ? <span className="gm-spinner-sm" /> : <Save size={14} />}
-                    {isEdit ? "Save & Edit Permissions" : "Create & Set Permissions"}
-                  </button>
-                </div>
-
-              </form>
-            </>
-          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button className="btn btn-primary" onClick={onSave} disabled={saving}>
+              {saving ? <><span className="spin-sm" />Saving...</> : <><Save size={15} />{isEdit ? "Save Changes" : "Create User"}</>}
+            </button>
+            <button className="btn btn-ghost" onClick={() => navigate("/users")}><ArrowLeft size={14} />Back</button>
+          </div>
         </div>
-
       </div>
     </div>
   );
