@@ -3,14 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { loginUser, getGates } from "../services/authService";
 import { Shield, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
+import { useResponsive } from "../hooks/useResponsive";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
-  // companyCode is VarChar — default 514670 (MSN company)
-  const [form, setForm]   = useState({ username: "", password: "", companyCode: "514670", gateId: "" });
-  const [gates, setGates] = useState([]);
-  const [error, setError] = useState("");
+  const { isMobile } = useResponsive();
+
+  const [form, setForm]       = useState({ username: "", password: "", companyCode: "514670", gateId: "" });
+  const [gates, setGates]     = useState([]);
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw]   = useState(false);
 
@@ -18,27 +20,36 @@ export default function Login() {
     if (isAuthenticated) navigate("/dashboard", { replace: true });
   }, [isAuthenticated, navigate]);
 
+  // Load gates only on mobile (Gate field only shown on mobile)
   useEffect(() => {
-    getGates("514670").then(r => { if (r.success) setGates(r.data || []); }).catch(() => {});
-  }, []);
+    if (!isMobile) return;
+    getGates("514670")
+      .then(r => { if (r.success) setGates(r.data || []); })
+      .catch(() => {});
+  }, [isMobile]);
 
-  const onChange = e => { setForm(p => ({ ...p, [e.target.name]: e.target.value })); setError(""); };
+  const onChange = e => {
+    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    setError("");
+  };
 
   const onSubmit = async e => {
     e.preventDefault();
     if (!form.username.trim()) return setError("Username is required");
     if (!form.password)        return setError("Password is required");
-    if (!form.gateId)          return setError("Please select a Gate");
+    // Gate required only on mobile
+    if (isMobile && !form.gateId) return setError("Please select a Gate");
+
     setLoading(true);
     try {
       const res = await loginUser({
         username:    form.username.trim(),
         password:    form.password,
-        companyCode: String(form.companyCode),  // VarChar e.g. "514670"
-        gateId:      Number(form.gateId),
+        companyCode: String(form.companyCode),
+        gateId:      isMobile ? Number(form.gateId) : null,
       });
       if (res.success) {
-        login(res.data);  // stores companyCode + companyId (Int from DB)
+        login(res.data);
         navigate("/dashboard", { replace: true });
       } else {
         setError(res.message || "Invalid credentials");
@@ -73,30 +84,67 @@ export default function Login() {
         <form onSubmit={onSubmit} noValidate>
           <div className="form-group">
             <label className="form-label">Company Code</label>
-            <input name="companyCode" type="text" className="form-input" value={form.companyCode} onChange={onChange} placeholder="Company Code" />
+            <input
+              name="companyCode"
+              type="text"
+              className="form-input"
+              value={form.companyCode}
+              onChange={onChange}
+              placeholder="Company Code"
+            />
           </div>
+
           <div className="form-group">
             <label className="form-label">Username <span className="req">*</span></label>
-            <input name="username" className="form-input" value={form.username} onChange={onChange} placeholder="Enter your username" autoCapitalize="none" autoFocus />
+            <input
+              name="username"
+              className="form-input"
+              value={form.username}
+              onChange={onChange}
+              placeholder="Enter your username"
+              autoCapitalize="none"
+              autoFocus
+            />
           </div>
+
           <div className="form-group">
             <label className="form-label">Password <span className="req">*</span></label>
             <div className="pw-wrap">
-              <input name="password" type={showPw ? "text" : "password"} className="form-input" value={form.password} onChange={onChange} placeholder="Enter your password" style={{ paddingRight: 42 }} />
+              <input
+                name="password"
+                type={showPw ? "text" : "password"}
+                className="form-input"
+                value={form.password}
+                onChange={onChange}
+                placeholder="Enter your password"
+                style={{ paddingRight: 42 }}
+              />
               <button type="button" className="pw-toggle" onClick={() => setShowPw(s => !s)}>
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Gate <span className="req">*</span></label>
-            <select name="gateId" className="form-input" value={form.gateId} onChange={onChange}>
-              <option value="">— Select Gate —</option>
-              {gates.length > 0
-                ? gates.map(g => <option key={g.id} value={g.id}>{g.name || g.code}</option>)
-                : <option value="1">Gate 1 (Default)</option>}
-            </select>
-          </div>
+
+          {/* Gate — MOBILE ONLY */}
+          {isMobile && (
+            <div className="form-group">
+              <label className="form-label">Gate <span className="req">*</span></label>
+              <select
+                name="gateId"
+                className="form-input"
+                value={form.gateId}
+                onChange={onChange}
+              >
+                <option value="">— Select Gate —</option>
+                {gates.length > 0
+                  ? gates.map(g => (
+                      <option key={g.id} value={g.id}>{g.name || g.code}</option>
+                    ))
+                  : <option value="1">Gate 1 (Default)</option>}
+              </select>
+            </div>
+          )}
+
           <button type="submit" className="login-submit" disabled={loading}>
             {loading
               ? <><span className="spin-sm" style={{ borderColor: "rgba(0,0,0,0.25)", borderTopColor: "#000" }} />Signing in...</>

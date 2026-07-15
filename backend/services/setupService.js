@@ -1,80 +1,102 @@
 // services/setupService.js
-// Type map: 1=Gates, 2=Securities, 3=Designations, 4=Locations
 const repo = require("../repositories/setupRepo");
 
-const TYPE_MAP = { gates: 1, securities: 2, designations: 3, locations: 4 };
+// gtypemuid mapping — confirmed by manager
+const GTYPE = { gates: 2, designations: 1 };
+const getGType = (typeStr) => GTYPE[typeStr?.toLowerCase()] ?? 0;
 
-function getType(typeStr) {
-  return TYPE_MAP[typeStr?.toLowerCase()] || 0;
-}
+// ─────────────────────────────────────────────────────────────
+// Helper — extract ResponseMessage safely from SP result
+// SP may return: { ResponseMessage: "..." } or nothing
+// If nothing returned, we still treat it as success
+// (SP ran without throwing = operation succeeded)
+// ─────────────────────────────────────────────────────────────
+const getMsg = (row, fallback) =>
+  row?.ResponseMessage ?? row?.responseMessage ?? row?.Message ?? row?.message ?? fallback;
 
-async function getSetupData({ companyCode, typeStr, tag }) {
-  const type = getType(typeStr);
-  const rows  = await repo.getSetupGrid({ companyCode, type, tag: tag ?? 1 });
-  return rows.map((r) => ({
+// ─────────────────────────────────────────────────────────────
+// GET grid
+// ─────────────────────────────────────────────────────────────
+async function getSetupData({ companyId, typeStr, tag }) {
+  const gTypeMUid = getGType(typeStr);
+  const rows = await repo.getGeneralGrid({ companyId, gTypeMUid, tag: tag ?? 1 });
+  return rows.map(r => ({
     uid:       r.Uid       ?? r.uid       ?? 0,
-    code:      r.Code      ?? r.code      ?? "",
-    name:      r.Name      ?? r.name      ?? "",
-    extra:     r.Extra     ?? r.extra     ?? "",
-    photo:     r.Photo     ?? r.photo     ?? "",
-    active:    r.Active    ?? r.active    ?? 1,
-    mobile:    r.Mobile    ?? r.mobile    ?? "",
-    gender:    r.Gender    ?? r.gender    ?? "",
+    code:      r.gcode     ?? r.Gcode     ?? r.code      ?? "",
+    name:      r.gname     ?? r.Gname     ?? r.name      ?? "",
+    shortName: r.gsname    ?? r.Gsname    ?? r.shortName ?? "",
+    active:    r.active    ?? r.Active    ?? 1,
   }));
 }
 
-async function createSetup({ companyCode, typeStr, body }) {
-  const type = getType(typeStr);
-  const result = await repo.iudSetup({
-    companyCode, mode: 1, type, uid: 0,
-    code:  body.code      || "",
-    name:  body.name      || "",
-    extra: JSON.stringify({ mobile: body.mobile || "", gender: body.gender || "", description: body.description || "" }),
-    photo: body.photo     || "",
+// ─────────────────────────────────────────────────────────────
+// CREATE — Mode 1
+// ─────────────────────────────────────────────────────────────
+async function createSetup({ companyId, userId, typeStr, body }) {
+  const gTypeMUid = getGType(typeStr);
+  const row = await repo.iudGeneral({
+    companyId, userId, mode: 1, gTypeMUid, uid: 0,
+    code:      body.code      || "",
+    name:      body.name      || "",
+    shortName: body.shortName || "",
   });
-  return result;
+  return { ResponseMessage: getMsg(row, "Created successfully") };
 }
 
-async function updateSetup({ companyCode, typeStr, uid, body }) {
-  const type = getType(typeStr);
-  const result = await repo.iudSetup({
-    companyCode, mode: 2, type, uid: Number(uid),
-    code:  body.code      || "",
-    name:  body.name      || "",
-    extra: JSON.stringify({ mobile: body.mobile || "", gender: body.gender || "", description: body.description || "" }),
-    photo: body.photo     || "",
+// ─────────────────────────────────────────────────────────────
+// UPDATE — Mode 2
+// SP may return empty recordset — that is OK, means success
+// ─────────────────────────────────────────────────────────────
+async function updateSetup({ companyId, userId, typeStr, uid, body }) {
+  const gTypeMUid = getGType(typeStr);
+  const row = await repo.iudGeneral({
+    companyId, userId, mode: 2, gTypeMUid, uid: Number(uid),
+    code:      body.code      || "",
+    name:      body.name      || "",
+    shortName: body.shortName || "",
   });
-  return result;
+  return { ResponseMessage: getMsg(row, "Updated successfully") };
 }
 
-async function deleteSetup({ companyCode, typeStr, uid }) {
-  const type = getType(typeStr);
-  const result = await repo.iudSetup({
-    companyCode, mode: 3, type, uid: Number(uid),
-    code: "", name: "", extra: "", photo: "",
+// ─────────────────────────────────────────────────────────────
+// DELETE — Mode 3 (soft delete)
+// SP may return empty recordset — that is OK, means success
+// ─────────────────────────────────────────────────────────────
+async function deleteSetup({ companyId, userId, typeStr, uid }) {
+  const gTypeMUid = getGType(typeStr);
+  const row = await repo.iudGeneral({
+    companyId, userId, mode: 3, gTypeMUid, uid: Number(uid),
+    code: "", name: "", shortName: "",
   });
-  return result;
+  return { ResponseMessage: getMsg(row, "Deleted successfully") };
 }
 
-async function restoreSetup({ companyCode, uid }) {
-  return await repo.undeleteSetup({ companyCode, uid: Number(uid) });
+// ─────────────────────────────────────────────────────────────
+// RESTORE — Mode 4
+// ─────────────────────────────────────────────────────────────
+async function restoreSetup({ companyId, userId, typeStr, uid }) {
+  const gTypeMUid = getGType(typeStr);
+  const row = await repo.iudGeneral({
+    companyId, userId, mode: 4, gTypeMUid, uid: Number(uid),
+    code: "", name: "", shortName: "",
+  });
+  return { ResponseMessage: getMsg(row, "Restored successfully") };
 }
 
-async function getDropdown({ companyCode, typeStr }) {
-  const type = getType(typeStr);
-  const rows  = await repo.getSetupDropdown({ companyCode, type });
-  return rows.map((r) => ({
-    id:   r.Uid  ?? r.uid  ?? 0,
-    code: r.Code ?? r.code ?? "",
-    name: r.Name ?? r.name ?? "",
+// ─────────────────────────────────────────────────────────────
+// DROPDOWN
+// ─────────────────────────────────────────────────────────────
+async function getDropdown({ companyId, typeStr }) {
+  const type = getGType(typeStr);
+  const rows = await repo.getSetupDropdown({ companyId, type });
+  return rows.map(r => ({
+    id:   r.Uid   ?? r.uid   ?? 0,
+    code: r.gcode ?? r.code  ?? "",
+    name: r.gname ?? r.name  ?? "",
   }));
 }
 
 module.exports = {
-  getSetupData,
-  createSetup,
-  updateSetup,
-  deleteSetup,
-  restoreSetup,
-  getDropdown,
+  getSetupData, createSetup, updateSetup,
+  deleteSetup, restoreSetup, getDropdown,
 };

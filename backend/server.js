@@ -48,6 +48,7 @@ const corsOptions = {
     "companyid",
     "companycode",
     "gateid",
+    "devicetype",
   ],
   exposedHeaders: ["Content-Type"],
   optionsSuccessStatus: 200,

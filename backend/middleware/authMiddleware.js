@@ -1,20 +1,20 @@
 // middleware/authMiddleware.js
-// Two company identifiers in this system:
-//   companyCode  (VarChar) = login code e.g. "514670" — used for login SP only
-//   companyId    (Int)     = internal DB id e.g. 1    — used for ALL other SPs
-// Frontend stores both after login and sends companyId in "companyid" header
-
-const DEFAULT_COMPANY_ID = parseInt(process.env.DEFAULT_COMPANY_CODE) || 1;
+const DEFAULT_COMPANY_ID = parseInt(process.env.DEFAULT_COMPANY_ID) || 1;
 
 // ─────────────────────────────────────────────────────────────
-// GMS PROTECT — validates userid + companyid headers
-// All protected API calls must pass these headers
+// GMS PROTECT
+// Headers expected:
+//   userid      — Int  (from login)
+//   companyid   — Int  (from login response, e.g. 1)
+//   gateid      — Int  (selected gate, optional)
+//   devicetype  — String "mobile" | "desktop" (sent by frontend)
 // ─────────────────────────────────────────────────────────────
 const gmsProtect = (req, res, next) => {
   try {
-    const userId    = req.headers["userid"];
-    const companyId = req.headers["companyid"] || DEFAULT_COMPANY_ID;
-    const gateId    = req.headers["gateid"]    || null;
+    const userId     = req.headers["userid"];
+    const companyId  = req.headers["companyid"]  || DEFAULT_COMPANY_ID;
+    const gateId     = req.headers["gateid"]     || null;
+    const deviceType = req.headers["devicetype"] || "desktop"; // "mobile" | "desktop"
 
     if (!userId) {
       return res.status(401).json({
@@ -24,9 +24,11 @@ const gmsProtect = (req, res, next) => {
     }
 
     req.gmsUser = {
-      userId:    parseInt(userId),
-      companyId: parseInt(companyId),   // always Int for SP calls
-      gateId:    gateId ? parseInt(gateId) : null,
+      userId:     parseInt(userId),
+      companyId:  parseInt(companyId),
+      gateId:     gateId ? parseInt(gateId) : null,
+      deviceType: deviceType.toLowerCase(), // "mobile" | "desktop"
+      isMobile:   deviceType.toLowerCase() === "mobile",
     };
 
     next();
@@ -36,12 +38,9 @@ const gmsProtect = (req, res, next) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-// ERROR HANDLERS
-// ─────────────────────────────────────────────────────────────
 const notFound = (req, res, next) => {
-  const err   = new Error(`Route not found: ${req.originalUrl}`);
-  err.status  = 404;
+  const err  = new Error(`Route not found: ${req.originalUrl}`);
+  err.status = 404;
   next(err);
 };
 
