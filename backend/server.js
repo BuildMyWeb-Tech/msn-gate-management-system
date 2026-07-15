@@ -81,6 +81,7 @@ app.get("/health", (_, res) =>
 );
 
 // ── Routes ───────────────────────────────────────────────────
+app.use("/api/debug",   require("./routes/debugRoute"));
 app.use("/api/auth",     authRoutes);
 app.use("/api/visitors", visitorRoutes);
 app.use("/api/vehicles", vehicleRoutes);

@@ -6,46 +6,66 @@ import Toast from "../../components/Toast";
 import { Plus, Pencil, Trash2, RotateCcw, Key, RefreshCw, UserCog, Search } from "lucide-react";
 
 export default function Users() {
-  const navigate = useNavigate();
+  const navigate     = useNavigate();
   const { isMobile } = useResponsive();
-  const [tab, setTab]     = useState(1);
-  const [rows, setRows]   = useState([]);
-  const [q, setQ]         = useState("");
+  const [tab, setTab]         = useState(1);
+  const [rows, setRows]       = useState([]);
+  const [q, setQ]             = useState("");
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState(null);
-  const [delId, setDelId] = useState(null);
+  const [toast, setToast]     = useState(null);
+  const [delId, setDelId]     = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const r = await api.get(`/users?tag=${tab}`); setRows(r.data?.data || []); }
-    catch { setToast({ type: "error", msg: "Failed to load users" }); }
-    finally { setLoading(false); }
+    try {
+      const r = await api.get(`/users?tag=${tab}`);
+      // Service now returns normalised: { uid, userName, active }
+      setRows(r.data?.data || []);
+    } catch {
+      setToast({ type: "error", msg: "Failed to load users" });
+    } finally { setLoading(false); }
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = q ? rows.filter(r => (r.UserName || r.username || r.userName || "").toLowerCase().includes(q.toLowerCase())) : rows;
+  const filtered = q
+    ? rows.filter(r =>
+        (r.userName || "").toLowerCase().includes(q.toLowerCase())
+      )
+    : rows;
 
-  const handleDelete = async id => {
-    try { await api.delete(`/users/${id}`); setToast({ type: "success", msg: "User deleted" }); setDelId(null); load(); }
-    catch { setToast({ type: "error", msg: "Failed to delete" }); }
+  const handleDelete = async (uid) => {
+    try {
+      await api.delete(`/users/${uid}`);
+      setToast({ type: "success", msg: "User deleted" });
+      setDelId(null);
+      load();
+    } catch { setToast({ type: "error", msg: "Failed to delete" }); }
   };
 
-  const handleRestore = async id => {
-    try { await api.patch(`/users/${id}/restore`); setToast({ type: "success", msg: "User restored" }); load(); }
-    catch { setToast({ type: "error", msg: "Failed to restore" }); }
+  const handleRestore = async (uid) => {
+    try {
+      await api.patch(`/users/${uid}/restore`);
+      setToast({ type: "success", msg: "User restored" });
+      load();
+    } catch { setToast({ type: "error", msg: "Failed to restore" }); }
   };
 
   return (
     <div>
       <Toast toast={toast} onClose={() => setToast(null)} />
+
       <div className="page-hdr">
         <div className="page-hdr-left">
-          <h1 style={{ display: "flex", alignItems: "center", gap: 8 }}><UserCog size={22} />User Management</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <UserCog size={22} /> User Management
+          </h1>
           <p>{filtered.length} user{filtered.length !== 1 ? "s" : ""} • {tab === 1 ? "Active" : "Inactive"}</p>
         </div>
         <div className="page-hdr-actions">
-          <button className="btn btn-primary" onClick={() => navigate("/users/new")}><Plus size={15} />Add User</button>
+          <button className="btn btn-primary" onClick={() => navigate("/users/new")}>
+            <Plus size={15} /> Add User
+          </button>
         </div>
       </div>
 
@@ -56,13 +76,21 @@ export default function Users() {
         </div>
         <div className="toolbar-search" style={{ flex: 1 }}>
           <Search size={14} className="toolbar-search-icon" />
-          <input className="form-input" placeholder="Search username..." value={q} onChange={e => setQ(e.target.value)} />
+          <input
+            className="form-input"
+            placeholder="Search username..."
+            value={q}
+            onChange={e => setQ(e.target.value)}
+          />
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} />Refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={load}>
+          <RefreshCw size={14} /> Refresh
+        </button>
       </div>
 
-      {loading ? <div className="spinner-page"><div className="spinner" /></div>
-      : filtered.length === 0 ? (
+      {loading ? (
+        <div className="spinner-page"><div className="spinner" /></div>
+      ) : filtered.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon"><UserCog size={22} /></div>
           <h3>No users found</h3>
@@ -71,45 +99,69 @@ export default function Users() {
       ) : (
         <div className="table-wrap">
           <table>
-            <thead><tr>
-              <th style={{ width: 40 }}>#</th>
-              <th>Username</th>
-              {!isMobile && <th>Status</th>}
-              {!isMobile && <th>User ID</th>}
-              <th>Actions</th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>#</th>
+                <th>Username</th>
+                {!isMobile && <th>Status</th>}
+                {!isMobile && <th>User ID</th>}
+                <th>Actions</th>
+              </tr>
+            </thead>
             <tbody>
-              {filtered.map((row, i) => {
-                const uid      = row.Uid      || row.uid     || row.UserId || row.userId;
-                const username = row.UserName || row.userName|| row.username || "—";
-                const active   = row.Active   ?? row.active  ?? 1;
-                return (
-                  <tr key={uid || i}>
-                    <td className="td-muted">{i + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{username}</td>
-                    {!isMobile && <td>{active ? <span className="badge badge-in">Active</span> : <span className="badge badge-out">Inactive</span>}</td>}
-                    {!isMobile && <td className="td-muted">{uid}</td>}
+              {filtered.map((row, i) => (
+                <tr key={row.uid ?? i}>
+                  <td className="td-muted">{i + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{row.userName || "—"}</td>
+                  {!isMobile && (
                     <td>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {tab === 1 ? (
-                          <>
-                            <button className="btn btn-ghost btn-xs" onClick={() => navigate(`/users/edit/${uid}`)}><Pencil size={12} />Edit</button>
-                            <button className="btn btn-blue btn-xs" onClick={() => navigate(`/users/permissions/${uid}`, { state: { username } })}><Key size={12} />Perms</button>
-                            <button className="btn btn-ghost-danger btn-xs" onClick={() => setDelId(uid)}><Trash2 size={12} /></button>
-                          </>
-                        ) : (
-                          <button className="btn btn-ghost btn-xs" onClick={() => handleRestore(uid)}><RotateCcw size={12} />Restore</button>
-                        )}
-                      </div>
+                      {row.active
+                        ? <span className="badge badge-in">Active</span>
+                        : <span className="badge badge-out">Inactive</span>}
                     </td>
-                  </tr>
-                );
-              })}
+                  )}
+                  {!isMobile && <td className="td-muted">{row.uid}</td>}
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {tab === 1 ? (
+                        <>
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            onClick={() => navigate(`/users/edit/${row.uid}`)}
+                          >
+                            <Pencil size={12} /> Edit
+                          </button>
+                          <button
+                            className="btn btn-blue btn-xs"
+                            onClick={() => navigate(`/users/permissions/${row.uid}`, { state: { username: row.userName } })}
+                          >
+                            <Key size={12} /> Perms
+                          </button>
+                          <button
+                            className="btn btn-ghost-danger btn-xs"
+                            onClick={() => setDelId(row.uid)}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn btn-ghost btn-xs"
+                          onClick={() => handleRestore(row.uid)}
+                        >
+                          <RotateCcw size={12} /> Restore
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
+      {/* Delete confirm modal */}
       {delId && (
         <div className="modal-overlay" onClick={() => setDelId(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -122,7 +174,9 @@ export default function Users() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setDelId(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(delId)}><Trash2 size={14} />Delete</button>
+              <button className="btn btn-danger" onClick={() => handleDelete(delId)}>
+                <Trash2 size={14} /> Delete
+              </button>
             </div>
           </div>
         </div>

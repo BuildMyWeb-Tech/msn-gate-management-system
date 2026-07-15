@@ -1,41 +1,36 @@
 // repositories/visitorRepo.js
-// SP names will be provided by manager before Phase 3
 const { poolPromise, sql } = require("../database/sqlConnection");
 
-// GET visitor grid
-async function getVisitorGrid({ companyCode, date }) {
+async function getVisitorGrid({ companyId, date }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("CompanyCode", sql.Int,      companyCode)
-    .input("Date",        sql.VarChar,  date)
+    .input("companyid", sql.Int,     companyId)
+    .input("Date",      sql.VarChar, date)
     .execute("PR_Get_Visitors_ForGrid");
   return result.recordset;
 }
 
-// GET visitor by mobile (for auto-fill)
-async function getVisitorByMobile({ companyCode, mobile }) {
+async function getVisitorByMobile({ companyId, mobile }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("CompanyCode", sql.Int,     companyCode)
-    .input("Mobile",      sql.VarChar, mobile)
+    .input("companyid", sql.Int,     companyId)
+    .input("Mobile",    sql.VarChar, mobile)
     .execute("PR_Get_Visitor_ByMobile");
   return result.recordset[0] || null;
 }
 
-// GET visitor by id (for edit)
-async function getVisitorById({ companyCode, uid }) {
+async function getVisitorById({ companyId, uid }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("CompanyCode", sql.Int,    companyCode)
-    .input("Uid",         sql.BigInt, uid)
+    .input("companyid", sql.Int,    companyId)
+    .input("Uid",       sql.BigInt, uid)
     .execute("PR_Get_Visitor_ForEdit");
   return result.recordset[0] || null;
 }
 
-// INSERT / UPDATE visitor
 async function iuVisitor(jsonData) {
   const pool = await poolPromise;
   const result = await pool
@@ -45,22 +40,15 @@ async function iuVisitor(jsonData) {
   return result.recordset[0] ?? null;
 }
 
-// VISITOR OUT — mark exit time
-async function visitorOut({ companyCode, uid, outTime }) {
+async function visitorOut({ companyId, uid, outTime }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("CompanyCode", sql.Int,      companyCode)
-    .input("Uid",         sql.BigInt,   uid)
-    .input("OutTime",     sql.VarChar,  outTime)
+    .input("companyid", sql.Int,     companyId)
+    .input("Uid",       sql.BigInt,  uid)
+    .input("OutTime",   sql.VarChar, outTime)
     .execute("PR_Visitor_Out");
   return result.recordset[0] ?? null;
 }
 
-module.exports = {
-  getVisitorGrid,
-  getVisitorByMobile,
-  getVisitorById,
-  iuVisitor,
-  visitorOut,
-};
+module.exports = { getVisitorGrid, getVisitorByMobile, getVisitorById, iuVisitor, visitorOut };

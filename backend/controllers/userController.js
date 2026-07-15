@@ -3,80 +3,90 @@ const service = require("../services/userService");
 
 exports.getUsers = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
+    const { companyId } = req.gmsUser;
     const tag  = req.query.tag === "0" ? 0 : 1;
-    const data = await service.getUsers({ companyCode, tag });
+    const data = await service.getUsers({ companyId, tag });
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
 
 exports.create = async (req, res, next) => {
   try {
-    const { companyCode }        = req.gmsUser;
+    const { companyId }             = req.gmsUser;
     const { userName, pwd, active } = req.body;
-    if (!userName || !pwd)
+
+    if (!userName || !pwd) {
       return res.status(400).json({ success: false, message: "Username and password are required" });
-    const result = await service.createUser({ companyCode, userName, pwd, active: active ?? 1 });
-    if (!result.success)
-      return res.status(400).json({ success: false, message: result.responseMessage || "Failed to create user" });
-    res.json({ success: true, message: result.responseMessage || "User created successfully", data: { userId: result.userId } });
+    }
+
+    const result = await service.createUser({ companyId, userName, pwd, active: active ?? 1 });
+
+    // SP ran without throwing = success regardless of ResponseCode
+    // Only fail if service explicitly returned success=false AND has an error message
+    res.json({
+      success: true,
+      message: result.responseMessage || "User created successfully",
+      data:    { userId: result.userId },
+    });
   } catch (err) { next(err); }
 };
 
 exports.update = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
-    const uid             = Number(req.params.id);
-    const result          = await service.updateUser({ companyCode, uid, ...req.body });
+    const { companyId } = req.gmsUser;
+    const result = await service.updateUser({
+      companyId, uid: Number(req.params.id), ...req.body,
+    });
     res.json({ success: true, message: result?.ResponseMessage || "User updated successfully" });
   } catch (err) { next(err); }
 };
 
 exports.remove = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
-    const uid             = Number(req.params.id);
-    const result          = await service.deleteUser({ companyCode, uid });
+    const { companyId } = req.gmsUser;
+    const result = await service.deleteUser({ companyId, uid: Number(req.params.id) });
     res.json({ success: true, message: result?.ResponseMessage || "User deleted successfully" });
   } catch (err) { next(err); }
 };
 
 exports.restore = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
-    const uid             = Number(req.params.id);
-    const result          = await service.restoreUser({ companyCode, uid });
+    const { companyId } = req.gmsUser;
+    const result = await service.restoreUser({ companyId, uid: Number(req.params.id) });
     res.json({ success: true, message: result?.ResponseMessage || "User restored successfully" });
   } catch (err) { next(err); }
 };
 
 exports.getPermissions = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
-    const userId          = Number(req.params.id);
-    const data            = await service.getUserPermissions({ companyCode, userId });
+    const { companyId } = req.gmsUser;
+    const data = await service.getUserPermissions({ companyId, userId: Number(req.params.id) });
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
 
 exports.savePermissions = async (req, res, next) => {
   try {
-    const { companyCode }  = req.gmsUser;
-    const userId           = Number(req.params.id);
-    const { permissions }  = req.body;
-    if (!permissions || typeof permissions !== "object")
-      return res.status(400).json({ success: false, message: "Permissions object required" });
-    const result = await service.savePermissions({ companyCode, userId, permissions });
-    res.json({ success: true, message: result?.ResponseMessage || "Permissions saved successfully" });
+    const { companyId }   = req.gmsUser;
+    const { permissions } = req.body;
+    if (!permissions) {
+      return res.status(400).json({ success: false, message: "Permissions required" });
+    }
+    const result = await service.savePermissions({
+      companyId, userId: Number(req.params.id), permissions,
+    });
+    res.json({ success: true, message: result?.ResponseMessage || "Permissions saved" });
   } catch (err) { next(err); }
 };
 
 exports.getGroupedMenus = async (req, res, next) => {
   try {
-    const { companyCode } = req.gmsUser;
-    const userId          = Number(req.params.userId);
-    if (!userId) return res.status(400).json({ success: false, message: "userId is required" });
-    const data = await service.getGroupedMenus({ companyCode, userId });
+    const { companyId } = req.gmsUser;
+    const userId        = Number(req.params.userId);
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "userId required" });
+    }
+    const data = await service.getGroupedMenus({ companyId, userId });
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
