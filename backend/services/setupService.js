@@ -24,11 +24,11 @@ async function getSetupData({ companyId, typeStr, tag }) {
   return rows
     .filter(isDataRow)
     .map(r => ({
-      uid:       r.uid       ?? r.Uid       ?? 0,
-      code:      r.gcode     ?? r.Gcode     ?? "",
-      name:      r.gname     ?? r.Gname     ?? "",
-      shortName: r.gsname    ?? r.Gsname    ?? "",
-      active:    r.active    ?? r.Active    ?? true,
+      uid:       Number(r.uid ?? r.Uid ?? 0),  // SP returns uid as string — convert
+      code:      r.gcode  ?? r.Gcode  ?? "",
+      name:      r.gname  ?? r.Gname  ?? "",
+      shortName: r.gsname ?? r.Gsname ?? "",
+      active:    r.active ?? r.Active ?? true,
     }));
 }
 
@@ -97,7 +97,53 @@ async function getDropdown({ companyId, typeStr }) {
     }));
 }
 
+// exports moved to bottom
+
+// ─────────────────────────────────────────────────────────────
+// LOCATION service functions
+// ─────────────────────────────────────────────────────────────
+async function getLocationData({ companyId, tag }) {
+  const rows = await repo.getLocationGrid({ companyId, tag: tag ?? 1 });
+  return rows
+    .filter(r => r.uid !== undefined || r.gcode !== undefined)
+    .map(r => ({
+      uid:    Number(r.uid    ?? r.Uid    ?? 0),   // SP returns uid as string — convert to number
+      code:   r.gcode  ?? r.Gcode  ?? "",
+      name:   r.gname  ?? r.Gname  ?? "",
+      gpsId1: r.gpsid1 ?? r.GpsId1 ?? "",
+      gpsId2: r.gpsid2 ?? r.GpsId2 ?? "",
+      active: r.active ?? r.Active ?? true,
+    }));
+}
+
+async function createLocation({ companyId, userId, body }) {
+  const row = await repo.iudLocation({
+    companyId, userId, mode: 1, uid: 0,
+    code: body.code || "", name: body.name || "",
+    gpsId1: body.gpsId1 || "", gpsId2: body.gpsId2 || "",
+  });
+  return { ResponseMessage: row?.ResponseMessage ?? "Location created successfully" };
+}
+
+async function updateLocation({ companyId, userId, uid, body }) {
+  const row = await repo.iudLocation({
+    companyId, userId, mode: 2, uid: Number(uid),
+    code: body.code || "", name: body.name || "",
+    gpsId1: body.gpsId1 || "", gpsId2: body.gpsId2 || "",
+  });
+  return { ResponseMessage: row?.ResponseMessage ?? "Location updated successfully" };
+}
+
+async function deleteLocation({ companyId, userId, uid }) {
+  const row = await repo.iudLocation({
+    companyId, userId, mode: 3, uid: Number(uid),
+    code: "", name: "", gpsId1: "", gpsId2: "",
+  });
+  return { ResponseMessage: row?.ResponseMessage ?? "Location deleted successfully" };
+}
+
+// Re-export including location functions
 module.exports = {
-  getSetupData, createSetup, updateSetup,
-  deleteSetup, restoreSetup, getDropdown,
+  getSetupData, createSetup, updateSetup, deleteSetup, restoreSetup, getDropdown,
+  getLocationData, createLocation, updateLocation, deleteLocation,
 };

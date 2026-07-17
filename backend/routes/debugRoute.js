@@ -101,3 +101,46 @@ router.get("/get-users", async (req, res) => {
 });
 
 module.exports = router;
+
+// Test PR_IUD_Location delete
+// GET /api/debug/iud-location?mode=3&uid=1&companyid=1&userid=1
+router.get("/iud-location", async (req, res) => {
+  const { mode, uid, companyid, userid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("Mode",      sql.Int,           Number(mode)     || 3)
+      .input("Userid",    sql.Int,           Number(userid)   || 1)
+      .input("gcode",     sql.NVarChar(100), "")
+      .input("gname",     sql.NVarChar(200), "")
+      .input("gpsid1",    sql.NVarChar(80),  "")
+      .input("gpsid2",    sql.NVarChar(80),  "")
+      .input("Uid",       sql.Int,           Number(uid)      || 0)
+      .input("companyid", sql.Int,           Number(companyid)|| 1)
+      .execute("PR_IUD_Location");
+    res.json({
+      rowsAffected:   result.rowsAffected,
+      recordset:      result.recordset,
+      recordsets:     result.recordsets,
+      recordsetCount: result.recordsets?.length,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Test PR_Get_LocationData_ForFrontgrid
+// GET /api/debug/get-location?tag=1&companyid=1
+router.get("/get-location", async (req, res) => {
+  const { tag, companyid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("tag",       sql.Int, Number(tag)       ?? 1)
+      .input("companyid", sql.Int, Number(companyid) || 1)
+      .execute("PR_Get_LocationData_ForFrontgrid");
+    res.json({ rowsAffected: result.rowsAffected, recordset: result.recordset, count: result.recordset?.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});

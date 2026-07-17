@@ -77,4 +77,52 @@ async function getSetupDropdown({ companyId, type }) {
   return result.recordset || [];
 }
 
-module.exports = { getGeneralGrid, iudGeneral, getSetupDropdown };
+// exports moved to bottom
+
+// ─────────────────────────────────────────────────────────────
+// LOCATION — PR_Get_LocationData_ForFrontgrid
+// @tag int, @companyid int
+// ─────────────────────────────────────────────────────────────
+async function getLocationGrid({ companyId, tag }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("tag",       sql.Int, tag ?? 1)
+    .input("companyid", sql.Int, companyId)
+    .execute("PR_Get_LocationData_ForFrontgrid");
+  return result.recordset || [];
+}
+
+// ─────────────────────────────────────────────────────────────
+// LOCATION — PR_IUD_Location
+// @Mode int (1=Add, 2=Edit, 3=Delete)
+// @Userid int
+// @gcode nvarchar(100), @gname nvarchar(200)
+// @gpsid1 nvarchar(80), @gpsid2 nvarchar(80)
+// @Uid int (0 for Add)
+// @companyid int
+// ─────────────────────────────────────────────────────────────
+async function iudLocation({ companyId, userId, mode, uid, code, name, gpsId1, gpsId2 }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("Mode",      sql.Int,           mode)
+    .input("Userid",    sql.Int,           userId)
+    .input("gcode",     sql.NVarChar(100), code   || "")
+    .input("gname",     sql.NVarChar(200), name   || "")
+    .input("gpsid1",    sql.NVarChar(80),  gpsId1 || "")
+    .input("gpsid2",    sql.NVarChar(80),  gpsId2 || "")
+    .input("Uid",       sql.Int,           uid    || 0)
+    .input("companyid", sql.Int,           companyId)
+    .execute("PR_IUD_Location");
+
+  const row =
+    (result.recordset && result.recordset.length > 0)
+      ? result.recordset[0]
+      : (result.recordsets?.[0]?.length > 0)
+        ? result.recordsets[0][0]
+        : null;
+  return row;
+}
+
+module.exports = { getGeneralGrid, iudGeneral, getSetupDropdown, getLocationGrid, iudLocation };
