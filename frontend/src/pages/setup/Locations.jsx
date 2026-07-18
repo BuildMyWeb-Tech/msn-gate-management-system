@@ -64,6 +64,21 @@ export default function Locations() {
     const e = {};
     if (!form.code.trim()) e.code = "Location code is required";
     if (!form.name.trim()) e.name = "Location name is required";
+
+    // Validate duplicate GPS coordinates from grid (no SP needed)
+    if (form.gpsId1.trim() && form.gpsId2.trim()) {
+      const duplicate = rows.find(r => {
+        // Skip current record when editing
+        if (editId && r.uid === editId) return false;
+        return (
+          String(r.gpsId1).trim() === String(form.gpsId1).trim() &&
+          String(r.gpsId2).trim() === String(form.gpsId2).trim()
+        );
+      });
+      if (duplicate) {
+        e.gpsId1 = `Duplicate GPS — already used by "${duplicate.name}" (${duplicate.code})`;
+      }
+    }
     return e;
   };
 
@@ -213,7 +228,8 @@ export default function Locations() {
 
               <div className="form-group">
                 <label className="form-label">GPS Id 1 <span style={{ fontSize: 11, color: "var(--text3)" }}>(Latitude)</span></label>
-                <input name="gpsId1" className="form-input" value={form.gpsId1} onChange={onChange} placeholder="e.g. 13.082680" />
+                <input name="gpsId1" className={`form-input ${errors.gpsId1 ? "err" : ""}`} value={form.gpsId1} onChange={onChange} placeholder="e.g. 13.082680" />
+                {errors.gpsId1 && <div className="form-error">{errors.gpsId1}</div>}
               </div>
 
               <div className="form-group">
