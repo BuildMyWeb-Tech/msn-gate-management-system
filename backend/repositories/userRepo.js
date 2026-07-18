@@ -35,24 +35,38 @@ async function undeleteUserById({ companyId, uid }) {
   return result.recordset[0] ?? null;
 }
 
+// ─────────────────────────────────────────────────────────────
+// PR_Get_MenuData_ForUsermanagement
+// Manager confirmed: only @Userid needed — NO @companyid
+// Returns 2 recordsets:
+//   [0] menus:  { menumuid, menuname, menudid, SubMenuName }
+//   [1] rights: { UID, UserUid, MenuDUid, MRead, MWrite, MUpdate, MDelete, MPrint }
+// ─────────────────────────────────────────────────────────────
 async function getUserPermissions({ companyId, userId }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("companyid", sql.Int, companyId)
-    .input("Userid",    sql.Int, userId)
+    .input("Userid", sql.Int, userId)
     .execute("PR_Get_MenuData_ForUsermanagement");
-  return { menus: result.recordsets[0], rights: result.recordsets[1] };
+  return {
+    menus:  result.recordsets[0] || [],
+    rights: result.recordsets[1] || [],
+  };
 }
 
+// ─────────────────────────────────────────────────────────────
+// PR_Insert_UserMenus
+// From Excel: only @json parameter
+// SP uses OPENJSON internally to parse
+// JSON format: { userId, permissions: { [menuDUid]: { MWrite, MRead, MUpdate, MDelete, MPrint } } }
+// ─────────────────────────────────────────────────────────────
 async function savePermissions({ companyId, json }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("companyid", sql.Int,               companyId)
-    .input("json",      sql.NVarChar(sql.MAX), json)
+    .input("json", sql.NVarChar(sql.MAX), json)
     .execute("PR_Insert_UserMenus");
-  return result.recordset;
+  return result.recordset || [];
 }
 
 async function getUserMenus({ companyId, userId }) {

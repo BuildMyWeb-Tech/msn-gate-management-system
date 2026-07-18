@@ -5,9 +5,7 @@ exports.getData = async (req, res, next) => {
   try {
     const { companyId } = req.gmsUser;
     const tag  = req.query.tag === "0" ? 0 : 1;
-    const data = await service.getSetupData({
-      companyId, typeStr: req.params.setupType, tag,
-    });
+    const data = await service.getSetupData({ companyId, typeStr: req.params.setupType, tag });
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
@@ -15,9 +13,7 @@ exports.getData = async (req, res, next) => {
 exports.getDropdown = async (req, res, next) => {
   try {
     const { companyId } = req.gmsUser;
-    const data = await service.getDropdown({
-      companyId, typeStr: req.params.setupType,
-    });
+    const data = await service.getDropdown({ companyId, typeStr: req.params.setupType });
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
@@ -25,9 +21,7 @@ exports.getDropdown = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
-    const result = await service.createSetup({
-      companyId, userId, typeStr: req.params.setupType, body: req.body,
-    });
+    const result = await service.createSetup({ companyId, userId, typeStr: req.params.setupType, body: req.body });
     res.json({ success: true, message: result?.ResponseMessage || "Created successfully" });
   } catch (err) { next(err); }
 };
@@ -36,8 +30,10 @@ exports.update = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
     const result = await service.updateSetup({
-      companyId, userId, typeStr: req.params.setupType,
-      uid: req.params.id, body: req.body,
+      companyId, userId,
+      typeStr: req.params.setupType,
+      uid:     Number(req.params.id),   // ensure number
+      body:    req.body,
     });
     res.json({ success: true, message: result?.ResponseMessage || "Updated successfully" });
   } catch (err) { next(err); }
@@ -47,7 +43,9 @@ exports.remove = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
     const result = await service.deleteSetup({
-      companyId, userId, typeStr: req.params.setupType, uid: req.params.id,
+      companyId, userId,
+      typeStr: req.params.setupType,
+      uid:     Number(req.params.id),   // ensure number
     });
     res.json({ success: true, message: result?.ResponseMessage || "Deleted successfully" });
   } catch (err) { next(err); }
@@ -57,7 +55,9 @@ exports.restore = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
     const result = await service.restoreSetup({
-      companyId, userId, typeStr: req.params.setupType, uid: req.params.id,
+      companyId, userId,
+      typeStr: req.params.setupType,
+      uid:     Number(req.params.id),   // ensure number
     });
     res.json({ success: true, message: result?.ResponseMessage || "Restored successfully" });
   } catch (err) { next(err); }
@@ -84,7 +84,11 @@ exports.createLocation = async (req, res, next) => {
 exports.updateLocation = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
-    const result = await service.updateLocation({ companyId, userId, uid: req.params.id, body: req.body });
+    const result = await service.updateLocation({
+      companyId, userId,
+      uid:  Number(req.params.id),      // ensure number
+      body: req.body,
+    });
     res.json({ success: true, message: result?.ResponseMessage || "Updated successfully" });
   } catch (err) { next(err); }
 };
@@ -92,7 +96,10 @@ exports.updateLocation = async (req, res, next) => {
 exports.removeLocation = async (req, res, next) => {
   try {
     const { companyId, userId } = req.gmsUser;
-    const result = await service.deleteLocation({ companyId, userId, uid: req.params.id });
+    const result = await service.deleteLocation({
+      companyId, userId,
+      uid: Number(req.params.id),       // ensure number
+    });
     res.json({ success: true, message: result?.ResponseMessage || "Deleted successfully" });
   } catch (err) { next(err); }
 };
