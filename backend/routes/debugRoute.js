@@ -219,3 +219,48 @@ router.get("/iud-general-delete", async (req, res) => {
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Test PR_Get_UserMenus (only @userid)
+// GET /api/debug/get-user-menus?userid=3
+router.get("/get-user-menus", async (req, res) => {
+  const { userid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("userid", sql.Int, Number(userid) || 1)
+      .execute("PR_Get_UserMenus");
+    res.json({ recordset: result.recordset, count: result.recordset?.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Test PR_Get_MenuRights_ForUser
+// GET /api/debug/get-menu-rights?userid=3&menudid=1&companyid=1
+router.get("/get-menu-rights", async (req, res) => {
+  const { userid, menudid, companyid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("companyid", sql.Int, Number(companyid) || 1)
+      .input("Userid",    sql.Int, Number(userid)    || 3)
+      .input("Menudid",   sql.Int, Number(menudid)   || 1)
+      .execute("PR_Get_MenuRights_ForUser");
+    res.json({ recordset: result.recordset, count: result.recordset?.length });
+  } catch (err) {
+    // Try without companyid
+    try {
+      const pool = await poolPromise;
+      const result = await pool
+        .request()
+        .input("Userid",  sql.Int, Number(userid)  || 3)
+        .input("Menudid", sql.Int, Number(menudid) || 1)
+        .execute("PR_Get_MenuRights_ForUser");
+      res.json({ note: "worked WITHOUT companyid", recordset: result.recordset });
+    } catch (err2) {
+      res.status(500).json({ error: err.message, error2: err2.message });
+    }
+  }
+});

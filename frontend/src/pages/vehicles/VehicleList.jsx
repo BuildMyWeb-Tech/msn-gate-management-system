@@ -4,6 +4,7 @@ import { useResponsive } from "../../hooks/useResponsive";
 import { getVehicles, markVehicleOut } from "../../services/vehicleService";
 import Toast from "../../components/Toast";
 import { Plus, Search, RefreshCw, LogOut, Pencil, Car } from "lucide-react";
+import { usePagePerms } from "../../hooks/usePagePerms";
 
 const today = () => new Date().toISOString().split("T")[0];
 const fmtTime = v => { if (!v) return null; try { return new Date(v).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}); } catch { return v; } };
@@ -11,6 +12,7 @@ const fmtTime = v => { if (!v) return null; try { return new Date(v).toLocaleTim
 export default function VehicleList() {
   const navigate  = useNavigate();
   const { isMobile } = useResponsive();
+  const { canWrite, canUpdate } = usePagePerms();
   const [date, setDate]   = useState(today());
   const [rows, setRows]   = useState([]);
   const [q, setQ]         = useState("");
@@ -42,7 +44,7 @@ export default function VehicleList() {
           <p>{filtered.length} record{filtered.length!==1?"s":""} • {new Date(date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</p>
         </div>
         <div className="page-hdr-actions">
-          <button className="btn btn-primary" onClick={()=>navigate("/vehicles/new")}><Plus size={15}/>New Vehicle</button>
+          {canWrite && <button className="btn btn-primary" onClick={()=>navigate("/vehicles/new")}><Plus size={15}/>New Vehicle</button>}
         </div>
       </div>
 
@@ -98,8 +100,8 @@ export default function VehicleList() {
                     {!isMobile&&<td>{isOut?<span className="badge badge-out">Out</span>:<span className="badge badge-in">Inside</span>}</td>}
                     <td>
                       <div style={{display:"flex",gap:6}}>
-                        <button className="btn btn-ghost btn-xs" onClick={()=>navigate(`/vehicles/edit/${uid}`)}><Pencil size={12}/>Edit</button>
-                        {!isOut&&<button className="btn btn-primary btn-xs" onClick={()=>handleOut(row)}><LogOut size={12}/>Out</button>}
+                        {canUpdate&&<button className="btn btn-ghost btn-xs" onClick={()=>navigate(`/vehicles/edit/${uid}`)}><Pencil size={12}/>Edit</button>}
+                        {!isOut&&canUpdate&&<button className="btn btn-primary btn-xs" onClick={()=>handleOut(row)}><LogOut size={12}/>Out</button>}
                       </div>
                     </td>
                   </tr>

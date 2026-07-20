@@ -137,7 +137,62 @@ async function getGroupedMenus({ companyId, userId }) {
   return Object.values(groups);
 }
 
+// exports moved to bottom
+
+// ─────────────────────────────────────────────────────────────
+// GET sidebar menus — flat list with CRUD rights
+// Called after login and stored in context
+// Returns: [{ menudid, menuname, subMenuName, mRead, mWrite, mUpdate, mDelete, mPrint }]
+// ─────────────────────────────────────────────────────────────
+async function getSidebarMenus({ companyId, userId }) {
+  // Use PR_Get_MenuData_ForUsermanagement — same SP as permissions screen
+  // Returns 2 recordsets:
+  //   [0] = menus list { menumuid, menuname, menudid, SubMenuName }
+  //   [1] = rights     { MenuDUid, MRead, MWrite, MUpdate, MDelete, MPrint }
+  const raw   = await repo.getUserPermissions({ companyId, userId });
+  const menus = raw.menus  || [];
+  const rights= raw.rights || [];
+
+  // Build rights map keyed by MenuDUid
+  const rightsMap = {};
+  rights.forEach(r => {
+    const k = Number(r.MenuDUid ?? r.menuDUid ?? 0);
+    if (k) rightsMap[k] = r;
+  });
+
+  // Also get the menu list from PR_Get_UserMenus to know which menus user can SEE
+  // (menus they have access to — filtered by user assignment)
+  const userMenuRows = await repo.getUserMenus({ companyId, userId });
+  const allowedIds   = new Set(
+    userMenuRows
+      .filter(r => r.menudid !== undefined)
+      .map(r => Number(r.menudid))
+  );
+
+  // Combine: only return menus user is assigned to, with their rights
+  return menus
+    .filter(m => m.menudid !== undefined && allowedIds.has(Number(m.menudid)))
+    .map(m => {
+      const mid   = Number(m.menudid);
+      const r     = rightsMap[mid] || {};
+      const toBit = v => v === true ? 1 : Number(v ?? 0);
+      return {
+        menudid:     mid,
+        menuname:    m.menuname    ?? "",
+        subMenuName: m.SubMenuName ?? "",
+        mRead:   toBit(r.MRead),
+        mWrite:  toBit(r.MWrite),
+        mUpdate: toBit(r.MUpdate),
+        mDelete: toBit(r.MDelete),
+        mPrint:  toBit(r.MPrint),
+      };
+    })
+    .filter(m => m.mRead === 1); // Only show menus user can READ
+}
+
+// Add to exports
 module.exports = {
   getUsers, createUser, updateUser, deleteUser,
-  restoreUser, getUserPermissions, savePermissions, getGroupedMenus,
+  restoreUser, getUserPermissions, savePermissions,
+  getGroupedMenus, getSidebarMenus,
 };

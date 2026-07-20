@@ -6,10 +6,12 @@ import api from "../../services/api";
 import Toast from "../../components/Toast";
 import SortableHeader from "../../components/SortableHeader";
 import { Plus, Pencil, Trash2, RotateCcw, Key, RefreshCw, UserCog, Search } from "lucide-react";
+import { usePagePerms } from "../../hooks/usePagePerms";
 
 export default function Users() {
   const navigate      = useNavigate();
   const { isMobile }  = useResponsive();
+  const { canWrite, canUpdate, canDelete } = usePagePerms();
   const [tab, setTab]         = useState(1);
   const [rows, setRows]       = useState([]);
   const [q, setQ]             = useState("");
@@ -47,7 +49,7 @@ export default function Users() {
           <p>{sorted.length} user{sorted.length !== 1 ? "s" : ""} • {tab === 1 ? "Active" : "Inactive"}</p>
         </div>
         <div className="page-hdr-actions">
-          <button className="btn btn-primary" onClick={() => navigate("/users/new")}><Plus size={15} /> Add User</button>
+          {canWrite && <button className="btn btn-primary" onClick={() => navigate("/users/new")}><Plus size={15} /> Add User</button>}
         </div>
       </div>
 
@@ -93,9 +95,9 @@ export default function Users() {
                     <div style={{ display: "flex", gap: 6 }}>
                       {tab === 1 ? (
                         <>
-                          <button className="btn btn-ghost btn-xs" onClick={() => navigate(`/users/edit/${row.uid}`)}><Pencil size={12} /> Edit</button>
+                          {canUpdate && <button className="btn btn-ghost btn-xs" onClick={() => navigate(`/users/edit/${row.uid}`)}><Pencil size={12} /> Edit</button>}
                           <button className="btn btn-blue btn-xs" onClick={() => navigate(`/users/permissions/${row.uid}`, { state: { username: row.userName } })}><Key size={12} /> Perms</button>
-                          <button className="btn btn-ghost-danger btn-xs" onClick={() => setDelId(row.uid)}><Trash2 size={12} /></button>
+                          {canDelete && <button className="btn btn-ghost-danger btn-xs" onClick={() => setDelId(row.uid)}><Trash2 size={12} /></button>}
                         </>
                       ) : (
                         <button className="btn btn-ghost btn-xs" onClick={() => handleRestore(row.uid)}><RotateCcw size={12} /> Restore</button>

@@ -11,17 +11,6 @@ import {
 
 const today = () => new Date().toISOString().split("T")[0];
 
-const MODULES = [
-  { Icon: Users,      label: "Visitors",        path: "/visitors",           color: "blue"   },
-  { Icon: Car,        label: "Vehicles",         path: "/vehicles",           color: "green"  },
-  { Icon: Shield,     label: "Security Patrol",  path: "/patrol",             color: "purple" },
-  { Icon: Layers,     label: "Gates",            path: "/setup/gates",        color: "amber"  },
-  { Icon: BadgeCheck, label: "Securities",       path: "/setup/securities",   color: "blue"   },
-  { Icon: Building2,  label: "Designations",     path: "/setup/designations", color: "green"  },
-  { Icon: MapPin,     label: "Locations",        path: "/setup/locations",    color: "purple" },
-  { Icon: UserCog,    label: "User Management",  path: "/users",              color: "amber"  },
-];
-
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate  = useNavigate();
@@ -80,18 +69,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Modules */}
-      <div className="section-title">Quick Access</div>
-      <div className="module-grid">
-        {MODULES.map(m => (
-          <button key={m.path} className="module-card" onClick={() => navigate(m.path)}>
-            <div className={`module-card-icon stat-card-icon ${m.color}`}>
-              <m.Icon size={20} />
-            </div>
-            <div className="module-card-name">{m.label}</div>
-          </button>
-        ))}
-      </div>
+      
     </div>
   );
 }

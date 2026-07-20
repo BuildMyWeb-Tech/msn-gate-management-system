@@ -1,45 +1,55 @@
 import React, { useState } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useMenu, MENU_ROUTE_MAP } from "../context/MenuContext";
 import {
-  LayoutDashboard, Users, Car, Shield, DoorOpen,
-  Settings, UserCog, LogOut, Menu, X,
-  Building2, MapPin, BadgeCheck, Layers
+  LayoutDashboard, Users, Car, Shield,
+  UserCog, LogOut, Menu, X,
+  Building2, MapPin, BadgeCheck, Layers,
 } from "lucide-react";
 
-const NAV = [
-  { section: "Operations" },
-  { path: "/dashboard",             label: "Dashboard",        Icon: LayoutDashboard },
-  { path: "/visitors",              label: "Visitors",         Icon: Users },
-  { path: "/vehicles",              label: "Vehicles",         Icon: Car },
-  { path: "/patrol",                label: "Security Patrol",  Icon: Shield },
-  { section: "Setup" },
-  { path: "/setup/gates",           label: "Gates",            Icon: Layers },
-  { path: "/setup/securities",      label: "Securities",       Icon: BadgeCheck },
-  { path: "/setup/designations",    label: "Designations",     Icon: Building2 },
-  { path: "/setup/locations",       label: "Locations",        Icon: MapPin },
-  { section: "Administration" },
-  { path: "/users",                 label: "User Management",  Icon: UserCog },
-];
+// Full nav config — icon + section grouping per SubMenuName
+// Sections are computed from SP menuname field
+const SUBMENU_CONFIG = {
+  "Gate":         { Icon: Layers,          path: "/setup/gates" },
+  "Securities":   { Icon: BadgeCheck,      path: "/setup/securities" },
+  "Designation":  { Icon: Building2,       path: "/setup/designations" },
+  "Locations":    { Icon: MapPin,          path: "/setup/locations" },
+  "Visitor List": { Icon: Users,           path: "/visitors" },
+  "Vehicles List":{ Icon: Car,             path: "/vehicles" },
+  "Patrols":      { Icon: Shield,          path: "/patrol" },
+  "Users":        { Icon: UserCog,         path: "/users" },
+};
+
+// Display label overrides (SP names → friendly labels)
+const LABEL_MAP = {
+  "Gate":         "Gates",
+  "Designation":  "Designations",
+  "Visitor List": "Visitors",
+  "Vehicles List":"Vehicles",
+  "Patrols":      "Security Patrol",
+  "Users":        "User Management",
+};
 
 const PAGE_LABELS = {
-  "/dashboard":           "Dashboard",
-  "/visitors":            "Visitors",
-  "/visitors/new":        "New Visitor",
-  "/vehicles":            "Vehicles",
-  "/vehicles/new":        "New Vehicle",
-  "/patrol":              "Security Patrol",
-  "/setup/gates":         "Gates",
-  "/setup/securities":    "Securities",
-  "/setup/designations":  "Designations",
-  "/setup/locations":     "Locations",
-  "/users":               "User Management",
+  "/dashboard":          "Dashboard",
+  "/visitors":           "Visitors",
+  "/visitors/new":       "New Visitor",
+  "/vehicles":           "Vehicles",
+  "/vehicles/new":       "New Vehicle",
+  "/patrol":             "Security Patrol",
+  "/setup/gates":        "Gates",
+  "/setup/securities":   "Securities",
+  "/setup/designations": "Designations",
+  "/setup/locations":    "Locations",
+  "/users":              "User Management",
 };
 
 export default function AppLayout() {
-  const { user, logout } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const { user, logout }  = useAuth();
+  const { menus, loading: menusLoading } = useMenu();
+  const navigate   = useNavigate();
+  const location   = useLocation();
   const [open, setOpen] = useState(false);
 
   const handleLogout = () => { logout(); navigate("/login", { replace: true }); };
@@ -48,20 +58,70 @@ export default function AppLayout() {
   const currentLabel = (() => {
     const path = location.pathname;
     if (PAGE_LABELS[path]) return PAGE_LABELS[path];
-    if (path.startsWith("/visitors/edit/")) return "Edit Visitor";
-    if (path.startsWith("/vehicles/edit/")) return "Edit Vehicle";
-    if (path.startsWith("/users/") && path.includes("permissions")) return "User Permissions";
+    if (path.startsWith("/visitors/edit/"))            return "Edit Visitor";
+    if (path.startsWith("/vehicles/edit/"))            return "Edit Vehicle";
+    if (path.includes("/permissions"))                 return "User Permissions";
     return "";
   })();
 
   const initials = (user?.userName || "U").slice(0, 2).toUpperCase();
 
+  // Build dynamic nav from SP menus
+  // Group by menuname (Setup, Visitors, Vehicles, Security Patrol, User Management)
+  const buildNav = () => {
+    if (menusLoading || menus.length === 0) return [];
+
+    const groups = {};
+    menus.forEach(m => {
+      // Skip menus without a configured route
+      const cfg = SUBMENU_CONFIG[m.subMenuName];
+      if (!cfg) return;
+
+      const group = m.menuname;
+      if (!groups[group]) groups[group] = [];
+      groups[group].push({
+        path:  cfg.path,
+        label: LABEL_MAP[m.subMenuName] || m.subMenuName,
+        Icon:  cfg.Icon,
+      });
+    });
+
+    const nav = [];
+
+    // Always show Dashboard first (no permission needed)
+    nav.push({ path: "/dashboard", label: "Dashboard", Icon: LayoutDashboard, section: null });
+
+    // Add groups in SP order
+    let lastGroup = null;
+    menus.forEach(m => {
+      const cfg = SUBMENU_CONFIG[m.subMenuName];
+      if (!cfg) return;
+
+      const group = m.menuname;
+      if (group !== lastGroup) {
+        nav.push({ section: group });
+        lastGroup = group;
+      }
+
+      // Avoid duplicates (same path added twice)
+      if (!nav.find(n => n.path === cfg.path)) {
+        nav.push({
+          path:  cfg.path,
+          label: LABEL_MAP[m.subMenuName] || m.subMenuName,
+          Icon:  cfg.Icon,
+        });
+      }
+    });
+
+    return nav;
+  };
+
+  const nav = buildNav();
+
   return (
     <div className="app-layout">
-      {/* Mobile overlay */}
       <div className={`sidebar-overlay ${open ? "open" : ""}`} onClick={close} />
 
-      {/* Sidebar */}
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-icon">
@@ -74,19 +134,25 @@ export default function AppLayout() {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV.map((item, i) =>
-            item.section ? (
-              <div key={i} className="sidebar-section">{item.section}</div>
-            ) : (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-                onClick={close}
-              >
-                <item.Icon size={16} className="nav-icon" />
-                {item.label}
-              </NavLink>
+          {menusLoading ? (
+            <div style={{ padding: "20px 16px", color: "var(--text3)", fontSize: 12 }}>
+              Loading menus...
+            </div>
+          ) : (
+            nav.map((item, i) =>
+              item.section ? (
+                <div key={`sec-${i}`} className="sidebar-section">{item.section}</div>
+              ) : (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+                  onClick={close}
+                >
+                  <item.Icon size={16} className="nav-icon" />
+                  {item.label}
+                </NavLink>
+              )
             )
           )}
         </nav>
@@ -102,13 +168,11 @@ export default function AppLayout() {
             </div>
           </div>
           <button className="btn-logout" onClick={handleLogout}>
-            <LogOut size={14} />
-            Sign Out
+            <LogOut size={14} /> Sign Out
           </button>
         </div>
       </aside>
 
-      {/* Main */}
       <div className="main-wrap">
         <header className="topbar">
           <button className="topbar-hamburger" onClick={() => setOpen(s => !s)} aria-label="Menu">

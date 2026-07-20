@@ -90,3 +90,17 @@ exports.getGroupedMenus = async (req, res, next) => {
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/users/sidebar/:userId
+// Returns flat list of menus with CRUD rights for sidebar rendering
+// ─────────────────────────────────────────────────────────────
+exports.getSidebarMenus = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const userId        = Number(req.params.userId);
+    if (!userId) return res.status(400).json({ success: false, message: "userId required" });
+    const data = await service.getSidebarMenus({ companyId, userId });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};

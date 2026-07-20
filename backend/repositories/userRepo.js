@@ -73,8 +73,8 @@ async function getUserMenus({ companyId, userId }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("companyid", sql.Int, companyId)
-    .input("userid",    sql.Int, userId)
+    // SP only takes @userid — no @companyid (same pattern as PR_Get_MenuData_ForUsermanagement)
+    .input("userid", sql.Int, userId)
     .execute("PR_Get_UserMenus");
   return result.recordset;
 }

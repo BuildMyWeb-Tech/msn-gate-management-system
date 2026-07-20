@@ -16,3 +16,7 @@ router.post("/:id/permissions",        ctrl.savePermissions);
 router.get("/menus/:userId",           ctrl.getGroupedMenus);
 
 module.exports = router;
+// already handled by controller — just verify route exists
+
+// GET /api/users/sidebar/:userId — flat menu list with CRUD rights for sidebar
+router.get("/sidebar/:userId", ctrl.getSidebarMenus);
