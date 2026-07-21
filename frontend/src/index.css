@@ -144,15 +144,7 @@ input, select, textarea { font-family: inherit; }
   flex-shrink: 0;
 }
 .sidebar-user-info { min-width: 0; flex: 1; }
-.sidebar-user-name{
-    font-size:12px;
-    font-weight:600;
-    color:var(--text);
-
-    overflow:hidden;
-    white-space:nowrap;
-    text-overflow:ellipsis;
-}
+.sidebar-user-name { font-size: 12px; font-weight: 600; color: var(--text); truncate; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sidebar-user-gate { font-size: 10px; color: var(--text3); margin-top: 1px; }
 .btn-logout {
   display: flex; align-items: center; gap: 8px;
@@ -537,4 +529,14 @@ tbody tr:hover td { background: rgba(255,255,255,0.025); }
   .page-hdr { flex-direction:column; align-items:flex-start; }
   .stats-grid { grid-template-columns:1fr 1fr; }
   .module-grid { grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); }
+}
+
+/* ── Panel animations ─────────────────────────────────────── */
+@keyframes slideRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }

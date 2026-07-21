@@ -103,3 +103,41 @@ exports.removeLocation = async (req, res, next) => {
     res.json({ success: true, message: result?.ResponseMessage || "Deleted successfully" });
   } catch (err) { next(err); }
 };
+
+// ── Securities endpoints ──────────────────────────────────────
+exports.getSecurities = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const tag  = req.query.tag === "0" ? 0 : 1;
+    const data = await service.getSecurityData({ companyId, tag });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+exports.createSecurity = async (req, res, next) => {
+  try {
+    const { companyId, userId } = req.gmsUser;
+    const result = await service.createSecurity({ companyId, userId, body: req.body });
+    res.json({ success: true, message: result?.ResponseMessage || "Created successfully" });
+  } catch (err) { next(err); }
+};
+
+exports.updateSecurity = async (req, res, next) => {
+  try {
+    const { companyId, userId } = req.gmsUser;
+    const result = await service.updateSecurity({
+      companyId, userId, uid: Number(req.params.id), body: req.body,
+    });
+    res.json({ success: true, message: result?.ResponseMessage || "Updated successfully" });
+  } catch (err) { next(err); }
+};
+
+exports.removeSecurity = async (req, res, next) => {
+  try {
+    const { companyId, userId } = req.gmsUser;
+    const result = await service.deleteSecurity({
+      companyId, userId, uid: Number(req.params.id),
+    });
+    res.json({ success: true, message: result?.ResponseMessage || "Deleted successfully" });
+  } catch (err) { next(err); }
+};

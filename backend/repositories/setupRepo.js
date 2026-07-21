@@ -125,4 +125,39 @@ async function iudLocation({ companyId, userId, mode, uid, code, name, gpsId1, g
   return row;
 }
 
-module.exports = { getGeneralGrid, iudGeneral, getSetupDropdown, getLocationGrid, iudLocation };
+// exports moved to bottom
+
+// ─────────────────────────────────────────────────────────────
+// SECURITIES
+// ─────────────────────────────────────────────────────────────
+async function getSecurityGrid({ companyId, tag }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("Tag",       sql.Bit, tag ?? 1)
+    .input("companyid", sql.Int, companyId)
+    .execute("PR_GetSecurityData_FrontGrid");
+  return result.recordset || [];
+}
+
+async function iudSecurity(jsonData) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("Json", sql.NVarChar(sql.MAX), jsonData)
+    .execute("PR_IUD_Security");
+  const row =
+    (result.recordset && result.recordset.length > 0)
+      ? result.recordset[0]
+      : (result.recordsets?.[0]?.length > 0)
+        ? result.recordsets[0][0]
+        : null;
+  return row;
+}
+
+// Update exports
+module.exports = {
+  getGeneralGrid, iudGeneral, getSetupDropdown,
+  getLocationGrid, iudLocation,
+  getSecurityGrid, iudSecurity,
+};

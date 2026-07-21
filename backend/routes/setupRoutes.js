@@ -12,6 +12,12 @@ router.post("/locations",         ctrl.createLocation);
 router.put("/locations/:id",      ctrl.updateLocation);
 router.delete("/locations/:id",   ctrl.removeLocation);
 
+// ── Securities (separate JSON SP) ────────────────────────────
+router.get("/securities",          ctrl.getSecurities);
+router.post("/securities",         ctrl.createSecurity);
+router.put("/securities/:id",      ctrl.updateSecurity);
+router.delete("/securities/:id",   ctrl.removeSecurity);
+
 // ── Gates & Designations (PR_Get_GeneralMData + PR_IUD_GeneralM) ──
 router.get("/:setupType/dropdown",        ctrl.getDropdown);
 router.get("/:setupType",                 ctrl.getData);

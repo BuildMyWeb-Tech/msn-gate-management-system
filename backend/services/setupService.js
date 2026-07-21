@@ -179,7 +179,130 @@ async function deleteLocation({ companyId, userId, uid }) {
   return { ResponseMessage: getMsg(row, "Location deleted successfully") };
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// SECURITIES
+// SP: PR_GetSecurityData_FrontGrid — @Tag bit, @companyid int
+// SP: PR_IUD_Security              — @Json NVARCHAR(MAX)
+// JSON fields: UId(0=Add), SCode, SName, Gender, Smobile1,
+//              SMobile2, SPassword, Address1-5, PhotoPath,
+//              Active(1=active, 0=delete), Companyid,
+//              CreatedBy, CreatedOn, DeletedBy, DeletedOn
+// ─────────────────────────────────────────────────────────────
+async function getSecurityData({ companyId, tag }) {
+  const rows = await repo.getSecurityGrid({ companyId, tag: tag ?? 1 });
+  return rows
+    .filter(r => r.UId !== undefined || r.SCode !== undefined || r.uid !== undefined)
+    .map(r => ({
+      uid:       Number(r.UId      ?? r.uid      ?? 0),
+      code:      r.SCode    ?? r.scode    ?? "",
+      name:      r.SName    ?? r.sname    ?? "",
+      gender:    r.Gender   ?? r.gender   ?? "",
+      mobile1:   String(r.Smobile1 ?? r.smobile1 ?? ""),
+      mobile2:   String(r.SMobile2 ?? r.smobile2 ?? ""),
+      password:  r.SPassword?? r.spassword?? "",
+      addr1:     r.Address1 ?? r.address1 ?? "",
+      addr2:     r.Address2 ?? r.address2 ?? "",
+      addr3:     r.Address3 ?? r.address3 ?? "",
+      addr4:     r.Address4 ?? r.address4 ?? "",
+      photo:     r.PhotoPath?? r.photoPath?? "",
+      active:    r.Active   ?? r.active   ?? true,
+    }));
+}
+
+async function createSecurity({ companyId, userId, body }) {
+  const now     = new Date().toISOString().replace("T", " ").slice(0, 23);
+  const payload = {
+    UId:       0,
+    SCode:     body.code      || "",
+    SName:     body.name      || "",
+    Gender:    body.gender    || "",
+    Smobile1:  Number(body.mobile1) || 0,
+    SMobile2:  Number(body.mobile2) || 0,
+    SPassword: body.password  || "",
+    Address1:  body.addr1     || null,
+    Address2:  body.addr2     || null,
+    Address3:  body.addr3     || null,
+    Address4:  body.addr4     || null,
+    Address5:  null,
+    PhotoPath: body.photo ? `/Security/${body.code}` : "/Security/",
+    Active:    1,
+    Companyid: companyId,
+    CreatedBy: userId,
+    CreatedOn: now,
+    DeletedBy: null,
+    DeletedOn: null,
+  };
+  const row = await repo.iudSecurity(JSON.stringify(payload));
+  if (isSpError(row)) {
+    const err = new Error(getMsg(row, "Duplicate record — code already exists"));
+    err.status = 400;
+    throw err;
+  }
+  return { ResponseMessage: getMsg(row, "Security created successfully") };
+}
+
+async function updateSecurity({ companyId, userId, uid, body }) {
+  const now     = new Date().toISOString().replace("T", " ").slice(0, 23);
+  const payload = {
+    UId:       Number(uid),
+    SCode:     body.code      || "",
+    SName:     body.name      || "",
+    Gender:    body.gender    || "",
+    Smobile1:  Number(body.mobile1) || 0,
+    SMobile2:  Number(body.mobile2) || 0,
+    SPassword: body.password  || "",
+    Address1:  body.addr1     || null,
+    Address2:  body.addr2     || null,
+    Address3:  body.addr3     || null,
+    Address4:  body.addr4     || null,
+    Address5:  null,
+    PhotoPath: body.photo ? `/Security/${body.code}` : "/Security/",
+    Active:    1,
+    Companyid: companyId,
+    CreatedBy: userId,
+    CreatedOn: now,
+    DeletedBy: null,
+    DeletedOn: null,
+  };
+  const row = await repo.iudSecurity(JSON.stringify(payload));
+  if (isSpError(row)) {
+    const err = new Error(getMsg(row, "Duplicate record — code already exists"));
+    err.status = 400;
+    throw err;
+  }
+  return { ResponseMessage: getMsg(row, "Security updated successfully") };
+}
+
+async function deleteSecurity({ companyId, userId, uid }) {
+  const now     = new Date().toISOString().replace("T", " ").slice(0, 23);
+  const payload = {
+    UId:       Number(uid),
+    SCode:     "",
+    SName:     "",
+    Gender:    "",
+    Smobile1:  0,
+    SMobile2:  0,
+    SPassword: "",
+    Address1:  null,
+    Address2:  null,
+    Address3:  null,
+    Address4:  null,
+    Address5:  null,
+    PhotoPath: "/Security/",
+    Active:    0,            // Active=0 = soft delete
+    Companyid: companyId,
+    CreatedBy: userId,
+    CreatedOn: now,
+    DeletedBy: userId,
+    DeletedOn: now,
+  };
+  const row = await repo.iudSecurity(JSON.stringify(payload));
+  return { ResponseMessage: getMsg(row, "Security deleted successfully") };
+}
+
 module.exports = {
   getSetupData, createSetup, updateSetup, deleteSetup, restoreSetup, getDropdown,
   getLocationData, createLocation, updateLocation, deleteLocation,
+  getSecurityData, createSecurity, updateSecurity, deleteSecurity,
 };
