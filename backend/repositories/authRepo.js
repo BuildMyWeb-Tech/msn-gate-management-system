@@ -20,20 +20,21 @@ async function validateUser(username, password, companyCode) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Get gates list for login screen dropdown
-// SP: PR_Get_Gates_ForLogin  ← manager creates this SP
-// Fallback: returns empty array if SP not yet available
+// Get gates list for mobile login screen dropdown
+// SP: PR_Get_ValidGates_forMobileLogin
+// Param: @companyid int  (confirmed by manager)
+// Used on: Login page — Gate dropdown (mobile only)
 // ─────────────────────────────────────────────────────────────
 async function getGatesForLogin(companyCode) {
   try {
     const pool = await poolPromise;
     const result = await pool
       .request()
-      .input("companycode", sql.VarChar, String(companyCode))
-      .execute("PR_Get_Gates_ForLogin");
+      .input("companyid", sql.Int, Number(companyCode))
+      .execute("PR_Get_ValidGates_forMobileLogin");
     return result.recordset;
   } catch (err) {
-    console.warn("PR_Get_Gates_ForLogin not ready — returning empty gates list");
+    console.warn("PR_Get_ValidGates_forMobileLogin error:", err.message);
     return [];
   }
 }
