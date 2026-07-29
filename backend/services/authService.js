@@ -1,42 +1,39 @@
 // services/authService.js
 const authRepo = require("../repositories/authRepo");
 
-// ─────────────────────────────────────────────────────────────
-// Login
-// companyCode (VarChar) e.g. "514670"  → passed to SP as-is
-// SP returns companyid (Int) e.g. 1    → stored in session, passed to all future SPs
-// ─────────────────────────────────────────────────────────────
 async function login(username, password, companyCode) {
   const result = await authRepo.validateUser(username, password, companyCode);
-
   if (result?.ResponseCode === 100) {
     return {
-      success:         true,
-      userId:          result.Userid,
-      userName:        result.UserName   || username,
-      companyCode:     String(companyCode),         // original login code e.g. "514670"
-      companyId:       result.companyid  ?? result.Companyid ?? 1,  // internal DB int id e.g. 1
-      gateId:          result.GateId     || null,
-      gateName:        result.GateName   || null,
+      success:     true,
+      userId:      result.Userid,
+      userName:    result.UserName   || username,
+      companyCode: String(companyCode),
+      companyId:   result.companyid  ?? result.Companyid ?? 1,
+      gateId:      result.GateId     || null,
+      gateName:    result.GateName   || null,
     };
   }
-
   return {
     success: false,
     message: result?.ResponseMessage || "Invalid username or password",
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Get gates for login dropdown
-// ─────────────────────────────────────────────────────────────
 async function getGatesForLogin(companyCode) {
   const rows = await authRepo.getGatesForLogin(companyCode);
-  return rows.map((r) => ({
-    id:   r.Uid      ?? r.uid,
-    code: r.GateCode ?? r.gateCode ?? "",
-    name: r.GateName ?? r.gateName ?? "",
-  }));
+  // Log to see what columns SP actually returns
+  console.log("[getGatesForLogin] rows:", JSON.stringify(rows?.slice(0, 2)));
+
+  return rows.map(r => ({
+    // Try all possible column name variations SP might return
+    id:   r.Uid      ?? r.uid      ?? r.GateId   ?? r.gateid   ??
+          r.GateUID  ?? r.gateUID  ?? r.Id        ?? r.id       ?? 0,
+    code: r.GateCode ?? r.gateCode ?? r.Code      ?? r.code     ??
+          r.GCode    ?? r.gcode    ?? "",
+    name: r.GateName ?? r.gateName ?? r.Name      ?? r.name     ??
+          r.GName    ?? r.gname    ?? r.Gate       ?? r.gate     ?? "",
+  })).filter(g => g.id !== 0 || g.name !== ""); // filter empty rows
 }
 
 module.exports = { login, getGatesForLogin };

@@ -3,9 +3,9 @@ const { poolPromise, sql } = require("../database/sqlConnection");
 
 // ─────────────────────────────────────────────────────────────
 // Validate user login
-// SP:     PR_Validate_UserLogin
+// SP: PR_Validate_UserLogin
 // Params: @username VarChar, @password VarChar, @companycode VarChar
-// Returns: ResponseCode (100=success), ResponseMessage, companyid (Int), Userid (Int)
+// Returns: ResponseCode(100=success), ResponseMessage, companyid(Int), Userid(Int)
 // ─────────────────────────────────────────────────────────────
 async function validateUser(username, password, companyCode) {
   const pool = await poolPromise;
@@ -15,15 +15,13 @@ async function validateUser(username, password, companyCode) {
     .input("password",    sql.VarChar, String(password))
     .input("companycode", sql.VarChar, String(companyCode))
     .execute("PR_Validate_UserLogin");
-
   return result.recordset[0];
 }
 
 // ─────────────────────────────────────────────────────────────
-// Get gates list for mobile login screen dropdown
+// Get gates for mobile login dropdown
 // SP: PR_Get_ValidGates_forMobileLogin
-// Param: @companyid int  (confirmed by manager)
-// Used on: Login page — Gate dropdown (mobile only)
+// Param: @companyid int
 // ─────────────────────────────────────────────────────────────
 async function getGatesForLogin(companyCode) {
   try {
@@ -32,7 +30,10 @@ async function getGatesForLogin(companyCode) {
       .request()
       .input("companyid", sql.Int, Number(companyCode))
       .execute("PR_Get_ValidGates_forMobileLogin");
-    return result.recordset;
+
+    // Log raw response to see exact column names
+    console.log("[getGatesForLogin] raw:", JSON.stringify(result.recordset?.slice(0, 2)));
+    return result.recordset || [];
   } catch (err) {
     console.warn("PR_Get_ValidGates_forMobileLogin error:", err.message);
     return [];
