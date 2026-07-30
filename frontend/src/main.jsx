@@ -4,11 +4,9 @@ import App from "./App.jsx";
 import "./index.css";
 import { registerSW } from "virtual:pwa-register";
 
-// Register service worker — auto updates silently
 registerSW({
   onNeedRefresh() {
-    // New content available — auto reload
-    console.log("[PWA] New content available, updating...");
+    console.log("[PWA] New content available");
   },
   onOfflineReady() {
     console.log("[PWA] App ready for offline use");
