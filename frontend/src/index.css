@@ -143,9 +143,27 @@ input, select, textarea { font-family: inherit; }
   font-size: 12px; font-weight: 700; color: #fff;
   flex-shrink: 0;
 }
-.sidebar-user-info { min-width: 0; flex: 1; }
-.sidebar-user-name { font-size: 12px; font-weight: 600; color: var(--text); truncate; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.sidebar-user-gate { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+.sidebar-user-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.sidebar-user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sidebar-user-gate {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 1px;
+}
+
 .btn-logout {
   display: flex; align-items: center; gap: 8px;
   width: 100%; padding: 9px 12px;
