@@ -1,62 +1,83 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { loginUser, getGates } from "../services/authService";
-import { Shield, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
-import { useResponsive } from "../hooks/useResponsive";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { loginUser, getGates } from '../services/authService';
+import { Shield, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { useResponsive } from '../hooks/useResponsive';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const { isMobile } = useResponsive();
 
-  const [form, setForm]       = useState({ username: "", password: "", companyCode: "514670", gateId: "" });
-  const [gates, setGates]     = useState([]);
-  const [error, setError]     = useState("");
+  const [form, setForm] = useState({
+    username: '',
+    password: '',
+    companyCode: '514670',
+    gateId: '',
+  });
+  const [gates, setGates] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPw, setShowPw]   = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [gatesLoading, setGatesLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) navigate("/dashboard", { replace: true });
+    if (isAuthenticated) navigate('/dashboard', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  // Load gates only on mobile (Gate field only shown on mobile)
+  // Load gates for mobile only
   useEffect(() => {
     if (!isMobile) return;
-    getGates("514670")
-      .then(r => { if (r.success) setGates(r.data || []); })
-      .catch(() => {});
+    setGatesLoading(true);
+    getGates('514670')
+      .then((r) => {
+        console.log('[Login] gates response:', r);
+        if (r.success && r.data?.length > 0) {
+          setGates(r.data);
+        } else {
+          console.warn('[Login] No gates returned:', r);
+          // Fallback: show default gate so user can still login
+          setGates([{ id: 1, name: 'Gate 1', code: 'G001' }]);
+        }
+      })
+      .catch((err) => {
+        console.error('[Login] getGates error:', err);
+        setGates([{ id: 1, name: 'Gate 1', code: 'G001' }]);
+      })
+      .finally(() => setGatesLoading(false));
   }, [isMobile]);
 
-  const onChange = e => {
-    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
-    setError("");
+  const onChange = (e) => {
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setError('');
   };
 
-  const onSubmit = async e => {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    if (!form.username.trim()) return setError("Username is required");
-    if (!form.password)        return setError("Password is required");
-    // Gate required only on mobile
-    if (isMobile && !form.gateId) return setError("Please select a Gate");
+    if (!form.username.trim()) return setError('Username is required');
+    if (!form.password) return setError('Password is required');
+    if (isMobile && !form.gateId) return setError('Please select a Gate');
 
     setLoading(true);
     try {
       const res = await loginUser({
-        username:    form.username.trim(),
-        password:    form.password,
+        username: form.username.trim(),
+        password: form.password,
         companyCode: String(form.companyCode),
-        gateId:      isMobile ? Number(form.gateId) : null,
+        gateId: isMobile ? Number(form.gateId) : null,
       });
       if (res.success) {
         login(res.data);
-        navigate("/dashboard", { replace: true });
+        navigate('/dashboard', { replace: true });
       } else {
-        setError(res.message || "Invalid credentials");
+        setError(res.message || 'Invalid credentials');
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed. Please try again.");
-    } finally { setLoading(false); }
+      setError(err.response?.data?.message || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,7 +87,7 @@ export default function Login() {
           <div className="login-brand-icon">
             <Shield size={26} color="#000" strokeWidth={2.5} />
           </div>
-          <div style={{ textAlign: "center" }}>
+          <div style={{ textAlign: 'center' }}>
             <div className="login-brand-name">MSN Gate Management</div>
             <div className="login-brand-sub">Security Management System</div>
           </div>
@@ -95,7 +116,9 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Username <span className="req">*</span></label>
+            <label className="form-label">
+              Username <span className="req">*</span>
+            </label>
             <input
               name="username"
               className="form-input"
@@ -108,18 +131,20 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password <span className="req">*</span></label>
+            <label className="form-label">
+              Password <span className="req">*</span>
+            </label>
             <div className="pw-wrap">
               <input
                 name="password"
-                type={showPw ? "text" : "password"}
+                type={showPw ? 'text' : 'password'}
                 className="form-input"
                 value={form.password}
                 onChange={onChange}
                 placeholder="Enter your password"
                 style={{ paddingRight: 42 }}
               />
-              <button type="button" className="pw-toggle" onClick={() => setShowPw(s => !s)}>
+              <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)}>
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
@@ -128,27 +153,53 @@ export default function Login() {
           {/* Gate — MOBILE ONLY */}
           {isMobile && (
             <div className="form-group">
-              <label className="form-label">Gate <span className="req">*</span></label>
-              <select
-                name="gateId"
-                className="form-input"
-                value={form.gateId}
-                onChange={onChange}
-              >
-                <option value="">— Select Gate —</option>
-                {gates.length > 0
-                  ? gates.map(g => (
-                      <option key={g.id} value={g.id}>{g.name || g.code}</option>
-                    ))
-                  : <option value="1">Gate 1 (Default)</option>}
-              </select>
+              <label className="form-label">
+                Gate <span className="req">*</span>
+              </label>
+              {gatesLoading ? (
+                <div
+                  className="form-input"
+                  style={{ color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  <span
+                    className="spin-sm"
+                    style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--accent)' }}
+                  />
+                  Loading gates...
+                </div>
+              ) : (
+                <select
+                  name="gateId"
+                  className="form-input"
+                  value={form.gateId}
+                  onChange={onChange}
+                >
+                  <option value="">— Select Gate —</option>
+                  {gates.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name || g.code || `Gate ${g.id}`}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
           <button type="submit" className="login-submit" disabled={loading}>
-            {loading
-              ? <><span className="spin-sm" style={{ borderColor: "rgba(0,0,0,0.25)", borderTopColor: "#000" }} />Signing in...</>
-              : <><LogIn size={16} />Sign In</>}
+            {loading ? (
+              <>
+                <span
+                  className="spin-sm"
+                  style={{ borderColor: 'rgba(0,0,0,0.25)', borderTopColor: '#000' }}
+                />
+                Signing in...
+              </>
+            ) : (
+              <>
+                <LogIn size={16} />
+                Sign In
+              </>
+            )}
           </button>
         </form>
       </div>
