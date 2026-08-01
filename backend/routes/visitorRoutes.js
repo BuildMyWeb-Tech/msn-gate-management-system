@@ -1,15 +1,16 @@
-// routes/visitorRoutes.js
-const express = require('express');
-const router = express.Router();
-const ctrl = require('../controllers/visitorController');
-const { gmsProtect } = require('../middleware/authMiddleware');
+const express        = require("express");
+const router         = express.Router();
+const ctrl           = require("../controllers/visitorController");
+const { gmsProtect } = require("../middleware/authMiddleware");
 
 router.use(gmsProtect);
 
-router.get('/', ctrl.getAll); // GET  /api/visitors?date=YYYY-MM-DD
-router.post('/', ctrl.create); // POST /api/visitors
-router.put('/:id', ctrl.update); // PUT  /api/visitors/:id
-router.patch('/:id/out', ctrl.markOut); // PATCH /api/visitors/:id/out
-router.delete('/:id', ctrl.remove); // DELETE /api/visitors/:id
+router.get("/",              ctrl.getAll);
+router.get("/mobile/:mobile",ctrl.getByMobile);
+router.get("/:id",           ctrl.getById);
+router.post("/",             ctrl.create);
+router.put("/:id",           ctrl.update);
+router.patch("/:id/out",     ctrl.markOut);
+router.delete("/:id",        ctrl.remove);
 
 module.exports = router;
