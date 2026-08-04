@@ -2,8 +2,12 @@ const service = require("../services/visitorService");
 
 exports.getAll = async (req, res, next) => {
   try {
-    const { companyId, gateId } = req.gmsUser;
-    const date = req.query.date || new Date().toISOString().split("T")[0];
+    const { companyId, gateId: userGateId } = req.gmsUser;
+    const date   = req.query.date   || new Date().toISOString().split("T")[0];
+    // Frontend sends gateId in query (0 for desktop/all, actual id for mobile)
+    const gateId = req.query.gateId !== undefined
+      ? Number(req.query.gateId)
+      : (userGateId || 0);
     const data = await service.getVisitors({ companyId, gateId, date });
     res.json({ success:true, data });
   } catch (err) { next(err); }
