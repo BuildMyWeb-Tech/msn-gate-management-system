@@ -558,3 +558,26 @@ tbody tr:hover td { background: rgba(255,255,255,0.025); }
   from { transform: translateY(100%); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/* ── Sidebar width reduction ─────────────────────────────── */
+.sidebar {
+  width: 220px !important;
+}
+.main-wrap {
+  margin-left: 220px !important;
+}
+@media (max-width: 768px) {
+  .sidebar    { width: 240px !important; }
+  .main-wrap  { margin-left: 0 !important; }
+}
+
+/* ── Sidebar responsive fix ──────────────────────────────── */
+/* Desktop: sidebar visible, main content offset */
+@media (min-width: 769px) {
+  .sidebar { transform: translateX(0) !important; }
+}
+/* Mobile: sidebar is overlay, no margin on main */
+@media (max-width: 768px) {
+  .main-wrap { margin-left: 0 !important; }
+  .sidebar   { width: 240px; }
+}

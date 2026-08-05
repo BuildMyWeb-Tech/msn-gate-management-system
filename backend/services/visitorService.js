@@ -1,29 +1,31 @@
 const repo = require("../repositories/visitorRepo");
 
-const ID_TYPES = ["Aadhar", "PAN", "VoterId"];
-
-// ── SP column normaliser ──────────────────────────────────────
 function normalise(r) {
-  // Split Vidcard into idType + idNumber on retrieve
-  // Stored as "Aadhar:123456789012"
   const vidcard  = r.Vidcard ?? r.vidcard ?? "";
   const sepIdx   = vidcard.indexOf(":");
   const idType   = sepIdx > -1 ? vidcard.slice(0, sepIdx)  : "";
   const idNumber = sepIdx > -1 ? vidcard.slice(sepIdx + 1) : vidcard;
 
+  // Fix: mobile stored as float in DB — convert via BigInt to avoid scientific notation
+  const rawMobile = r.VMobile ?? r.vmobile ?? r.Mobile ?? "";
+  let mobile = "";
+  try {
+    if (rawMobile !== "" && rawMobile !== null) {
+      mobile = BigInt(Math.round(Number(rawMobile))).toString();
+    }
+  } catch { mobile = String(rawMobile); }
+
   return {
     uid:          Number(r.uid      ?? r.Uid      ?? 0),
     name:         r.VName    ?? r.vname    ?? "",
-    mobile:       String(r.VMobile  ?? r.vmobile  ?? ""),
+    mobile,
     visitorType:  r.VType    ?? r.vtype    ?? "",
     company:      r.VCompany ?? r.vcompany ?? "",
     toMeet:       r.ToMeet   ?? r.tomeet   ?? "",
     notes:        r.VNotes   ?? r.vnotes   ?? "",
-    vehicleNo:    r.VVehicleNo?? r.vvehicleno ?? "",
+    vehicleNo:    r.VVehicleNo ?? r.vvehicleno ?? "",
     inTime:       r.VIntime  ?? r.vintime  ?? null,
     outTime:      r.VOuttime ?? r.vouttime ?? null,
-    // Photo: stored as base64 in VPhotoPath if it starts with data:
-    // or use the path directly as src if it's a URL
     photo:        r.VPhotoPath ?? r.vphotopath ?? "",
     visitorCount: r.VisitorCount ?? 1,
     yearSlno:     r.YearSlno ?? 0,
@@ -36,11 +38,8 @@ function normalise(r) {
 
 function buildJson({ companyId, gateId, userId, uid, body }) {
   const now = new Date().toISOString().replace("T"," ").slice(0,23);
-  // Concat idType:idNumber → Vidcard
   const vidcard = body.idType && body.idNumber
-    ? `${body.idType}:${body.idNumber}`
-    : (body.idNumber || "");
-
+    ? `${body.idType}:${body.idNumber}` : (body.idNumber || "");
   return JSON.stringify([{
     uid:          Number(uid) || 0,
     YearSlno:     body.yearSlno    || 0,
@@ -49,7 +48,7 @@ function buildJson({ companyId, gateId, userId, uid, body }) {
     Vidcard:      vidcard,
     VDt:          body.inTime      || now,
     VName:        body.name        || "",
-    VMobile:      parseInt(body.mobile,10) || 0,
+    VMobile:      parseInt(body.mobile, 10) || 0,
     VType:        body.visitorType  || "",
     VCompany:     body.company      || "",
     ToMeet:       body.toMeet       || "",
@@ -57,7 +56,6 @@ function buildJson({ companyId, gateId, userId, uid, body }) {
     VVehicleNo:   body.vehicleNo    || "",
     VIntime:      body.inTime       || now,
     VOuttime:     body.outTime      || null,
-    // Photo: send base64 in VPhotoPath field
     VPhotoPath:   body.photo        || "/Photo/",
     VisitorCount: body.visitorCount  || 1,
     Active:       1,
@@ -67,20 +65,31 @@ function buildJson({ companyId, gateId, userId, uid, body }) {
 }
 
 async function getVisitors({ companyId, gateId, date }) {
+  // Use provided date; fallback uses local date to avoid UTC timezone shift
+  const localDate = date || (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  })();
   const rows = await repo.getVisitorGrid({
     companyId, gateId: gateId || 0,
-    date: date || new Date().toISOString().split("T")[0], tag: 1,
+    date: localDate, tag: 1,
   });
-  return rows
-    .filter(r => r.uid !== undefined || r.VName !== undefined)
-    .map(normalise);
+  return rows.filter(r => r.uid !== undefined || r.VName !== undefined).map(normalise);
 }
 
 async function getVisitorById({ companyId, uid }) {
-  // Fetch all today and find by uid — no dedicated single-record SP
-  const today = new Date().toISOString().split("T")[0];
-  const rows  = await repo.getVisitorGrid({ companyId, gateId:0, date:today, tag:1 });
-  const row   = rows.find(r => Number(r.uid ?? r.Uid) === Number(uid));
+  // Try today first, then yesterday if not found (for late-night edits)
+  const d = new Date();
+  const localToday = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  let rows = await repo.getVisitorGrid({ companyId, gateId:0, date:localToday, tag:1 });
+  let row  = rows.find(r => Number(r.uid ?? r.Uid) === Number(uid));
+  if (!row) {
+    // Try yesterday
+    const yd = new Date(d); yd.setDate(yd.getDate()-1);
+    const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,'0')}-${String(yd.getDate()).padStart(2,'0')}`;
+    rows = await repo.getVisitorGrid({ companyId, gateId:0, date:yesterday, tag:1 });
+    row  = rows.find(r => Number(r.uid ?? r.Uid) === Number(uid));
+  }
   return row ? normalise(row) : null;
 }
 
@@ -93,16 +102,15 @@ async function createVisitor({ companyId, gateId, userId, body }) {
 
 async function updateVisitor({ companyId, gateId, userId, uid, body }) {
   const json = buildJson({ companyId, gateId, userId, uid, body });
-  console.log("[updateVisitor] JSON:", json);
-  const row = await repo.iuVisitor(json);
+  const row  = await repo.iuVisitor(json);
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor updated" };
 }
 
 async function markVisitorOut({ companyId, userId, uid, body }) {
-  const now  = new Date().toISOString().replace("T"," ").slice(0,23);
+  const now = new Date().toISOString().replace("T"," ").slice(0,23);
   const json = buildJson({
-    companyId, gateId: body.gateUid || 0, userId, uid,
-    body: { ...body, outTime: now, Userid_out: userId },
+    companyId, gateId: body.gateUid||0, userId, uid,
+    body: { ...body, outTime: now },
   });
   const row = await repo.iuVisitor(json);
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor checked out" };
@@ -113,7 +121,4 @@ async function deleteVisitor({ uid }) {
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor deleted" };
 }
 
-module.exports = {
-  getVisitors, getVisitorById, createVisitor,
-  updateVisitor, markVisitorOut, deleteVisitor,
-};
+module.exports = { getVisitors, getVisitorById, createVisitor, updateVisitor, markVisitorOut, deleteVisitor };
