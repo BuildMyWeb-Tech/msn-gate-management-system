@@ -23,10 +23,16 @@ exports.getById = async (req, res, next) => {
 exports.getByMobile = async (req, res, next) => {
   try {
     const { companyId } = req.gmsUser;
-    const data = await service.getVisitorByMobile({ mobile: req.params.mobile, companyId });
+    const mobile = req.params.mobile;
+    console.log("[getByMobile] mobile:", mobile, "companyId:", companyId, "type:", typeof companyId);
+    const data = await service.getVisitorByMobile({ mobile, companyId });
+    console.log("[getByMobile] result:", JSON.stringify(data));
     if (!data) return res.json({ success:false, message:"No visitor found for this mobile" });
     res.json({ success:true, data });
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error("[getByMobile] ERROR:", err.message);
+    next(err);
+  }
 };
 
 // GET /api/visitors/search?q=xxx — PR_Search_Visitors
