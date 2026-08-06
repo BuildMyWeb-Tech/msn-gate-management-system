@@ -129,33 +129,32 @@ async function deleteVisitor({ uid }) {
 // ─────────────────────────────────────────────────────────────
 async function getVisitorByMobile({ mobile, companyId }) {
   const rows = await repo.getVisitorByMobile({ mobile, companyId });
-  console.log("[getVisitorByMobile] rows:", JSON.stringify(rows?.slice(0,1)));
-  if (!rows || rows.length === 0) return null;
-  // SP may return ResponseCode row — filter it
-  const data = rows.find(r =>
-    r.VName !== undefined || r.vname !== undefined ||
-    r.SCode !== undefined || r.Name  !== undefined
+  console.log("[getVisitorByMobile] columns:", rows?.[0] ? Object.keys(rows[0]) : []);
+
+  // Filter out ResponseCode-only rows, find real data row
+  // SP returns: VMobile, VName, VType, VCompany, Vidcard, ToMeet
+  const data = (rows || []).find(r =>
+    r.VName !== undefined || r.VMobile !== undefined
   );
   if (!data) return null;
 
-  // Parse Vidcard into idType + idNumber
+  // Vidcard format: "PAN:AERPM32573" → split on first ":"
   const vidcard  = data.Vidcard ?? data.vidcard ?? "";
   const sepIdx   = vidcard.indexOf(":");
   const idType   = sepIdx > -1 ? vidcard.slice(0, sepIdx)  : "";
   const idNumber = sepIdx > -1 ? vidcard.slice(sepIdx + 1) : vidcard;
 
-  const rawMobile = data.VMobile ?? data.vmobile ?? data.Mobile ?? mobile;
-  let mob = "";
-  try { mob = BigInt(Math.round(Number(rawMobile))).toString(); } catch { mob = String(rawMobile); }
+  // VMobile from SP is already a string "9842450500" — no conversion needed
+  const mob = String(data.VMobile ?? data.vmobile ?? mobile ?? "");
 
   return {
-    name:        data.VName    ?? data.vname    ?? data.Name    ?? "",
+    name:        data.VName    ?? data.vname    ?? "",
     mobile:      mob,
     visitorType: data.VType    ?? data.vtype    ?? "",
     company:     data.VCompany ?? data.vcompany ?? "",
     toMeet:      data.ToMeet   ?? data.tomeet   ?? "",
-    notes:       data.VNotes   ?? data.vnotes   ?? "",
-    vehicleNo:   data.VVehicleNo ?? data.vvehicleno ?? "",
+    notes:       "",
+    vehicleNo:   "",
     idType,
     idNumber,
   };

@@ -5,7 +5,7 @@ import { useSortableTable } from "../../hooks/useSortableTable";
 import { usePagePerms } from "../../hooks/usePagePerms";
 import { useAuth } from "../../context/AuthContext";
 import {
-  getVisitors, markVisitorOut, deleteVisitor, updateVisitor,
+  getVisitors, markVisitorOut, deleteVisitor, updateVisitor, searchVisitors,
 } from "../../services/visitorService";
 import Toast from "../../components/Toast";
 import SortableHeader from "../../components/SortableHeader";
@@ -338,13 +338,24 @@ export default function VisitorList() {
 
   useEffect(() => { load(); }, [load]);
 
-  // #8: Mobile search filters current grid by name/mobile/company
-  const mobileFiltered = mobileSearch
-    ? rows.filter(r =>
-        String(r.mobile||"").includes(mobileSearch) ||
-        (r.name||"").toLowerCase().includes(mobileSearch.toLowerCase()) ||
-        (r.company||"").toLowerCase().includes(mobileSearch.toLowerCase()))
-    : rows;
+  // #8: Mobile search — calls PR_Search_Visitors for global search (not date-limited)
+  const [globalRows, setGlobalRows] = useState(null); // null = use date rows
+  const [globalSearching, setGlobalSearching] = useState(false);
+
+  useEffect(() => {
+    if (!mobileSearch.trim()) { setGlobalRows(null); return; }
+    const timer = setTimeout(async () => {
+      setGlobalSearching(true);
+      try {
+        const r = await searchVisitors(mobileSearch.trim());
+        setGlobalRows(r.data || []);
+      } catch { setGlobalRows(null); }
+      finally { setGlobalSearching(false); }
+    }, 400); // debounce 400ms
+    return () => clearTimeout(timer);
+  }, [mobileSearch]);
+
+  const mobileFiltered = globalRows !== null ? globalRows : rows;
 
   const statusFiltered = mobileFiltered.filter(r => {
     if (filter==="In")    return !r.outTime;
@@ -392,17 +403,23 @@ export default function VisitorList() {
         </div>
       </div>
 
-      {/* #8: Mobile search — filters current grid, no history */}
+      {/* #8: Mobile search — calls PR_Search_Visitors globally */}
       {isMobile && (
         <div style={{marginBottom:8}}>
           <div className="input-group">
             <input className="form-input" placeholder="Search name, mobile or company..."
               value={mobileSearch}
               onChange={e=>setMobileSearch(e.target.value)}/>
-            {mobileSearch && (
-              <button className="btn btn-ghost" onClick={()=>setMobileSearch("")}><X size={14}/></button>
+            {globalSearching && <span className="spin-sm" style={{margin:"0 8px",borderColor:"var(--border2)",borderTopColor:"var(--accent)"}}/>}
+            {mobileSearch && !globalSearching && (
+              <button className="btn btn-ghost" onClick={()=>{setMobileSearch("");setGlobalRows(null);}}><X size={14}/></button>
             )}
           </div>
+          {globalRows !== null && (
+            <div style={{fontSize:11,color:"var(--text3)",marginTop:4,paddingLeft:4}}>
+              {globalRows.length} result{globalRows.length!==1?"s":""} across all dates
+            </div>
+          )}
         </div>
       )}
 
@@ -435,18 +452,17 @@ export default function VisitorList() {
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th style={{width:36}}>#</th>
-              {/* #1: Desktop only shows photo */}
+              {!isMobile && <th style={{width:36}}>#</th>}
               {!isMobile && <th style={{width:44}}>Photo</th>}
-              <SortableHeader label="Name"   colKey="name"    sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              {!isMobile && <SortableHeader label="Company" colKey="company"     sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
-              <SortableHeader label="Mobile" colKey="mobile"  sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              {!isMobile && <SortableHeader label="Type"    colKey="visitorType" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
-              {!isMobile && <SortableHeader label="To Meet" colKey="toMeet"      sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
+              {/* Name column — on mobile shows name + mobile subtitle */}
+              <SortableHeader label="Name / Mobile" colKey="name" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
+              {!isMobile && <SortableHeader label="Company"  colKey="company"     sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
+              {!isMobile && <SortableHeader label="Mobile"   colKey="mobile"      sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
+              {!isMobile && <SortableHeader label="Type"     colKey="visitorType" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
+              {!isMobile && <SortableHeader label="To Meet"  colKey="toMeet"      sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
               <SortableHeader label="In"  colKey="inTime"  sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              {/* #1: Mobile adds Out column */}
               <SortableHeader label="Out" colKey="outTime" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              <th style={{width:isMobile?44:150}}>Actions</th>
+              <th style={{width:isMobile?40:150}}>{isMobile?"":"Actions"}</th>
             </tr></thead>
             <tbody>
               {sorted.map((row,i)=>{
@@ -459,12 +475,20 @@ export default function VisitorList() {
                     onClick={()=>isMobile&&canUpdate&&setActiveRow(row)}
                     onMouseEnter={e=>{if(!isMobile&&canUpdate)e.currentTarget.style.background="var(--surface2)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="";}}>
-                    <td className="td-muted" style={{fontSize:11}}>{i+1}</td>
-                    {/* #1: Photo only on desktop */}
+                    {!isMobile && <td className="td-muted" style={{fontSize:11}}>{i+1}</td>}
                     {!isMobile && <td><PhotoStamp row={row}/></td>}
-                    <td style={{fontWeight:600}}>{row.name||"—"}</td>
+                    {/* Mobile: Name + mobile subtitle in ONE cell */}
+                    <td style={{fontWeight:600}}>
+                      {row.name||"—"}
+                      {isMobile && (
+                        <div style={{fontSize:11,color:"var(--text3)",fontWeight:400,marginTop:2}}>
+                          {row.mobile||""} 
+                        </div>
+                      )}
+                    </td>
                     {!isMobile && <td style={{fontSize:12,color:"var(--text2)"}}>{row.company||"—"}</td>}
-                    <td style={{fontWeight:700}}>{row.mobile||"—"}</td>
+                    {/* Mobile: no separate mobile column — shown as subtitle above */}
+                    {!isMobile && <td style={{fontWeight:700}}>{row.mobile||"—"}</td>}
                     {!isMobile && <td style={{fontSize:12}}>{row.visitorType||"—"}</td>}
                     {!isMobile && <td style={{fontSize:12}}>{row.toMeet||"—"}</td>}
                     <td style={{whiteSpace:"nowrap"}}>
@@ -474,14 +498,18 @@ export default function VisitorList() {
                       {outT?<span className="badge badge-out" style={{fontSize:11,padding:"2px 7px"}}>{outT}</span>:<span className="td-muted">—</span>}
                     </td>
                     <td onClick={e=>e.stopPropagation()}>
-                      <div style={{display:"flex",gap:4}}>
-                        <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}>
-                          <Eye size={11}/>{!isMobile&&" View"}
+                      {isMobile ? (
+                        <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)} style={{padding:"4px 8px"}}>
+                          <Eye size={14}/>
                         </button>
-                        {!isMobile&&canUpdate&&<button className="btn btn-ghost btn-xs" onClick={()=>navigate(`/visitors/edit/${row.uid}`)}><Pencil size={11}/> Edit</button>}
-                        {!isMobile&&!isOut&&canUpdate&&<button className="btn btn-primary btn-xs" onClick={()=>handleOut(row)}><LogOut size={11}/> Out</button>}
-                        {!isMobile&&canDelete&&<button className="btn btn-ghost-danger btn-xs" onClick={()=>handleDelete(row.uid)}><Trash2 size={11}/></button>}
-                      </div>
+                      ) : (
+                        <div style={{display:"flex",gap:4}}>
+                          <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}><Eye size={11}/> View</button>
+                          {canUpdate&&<button className="btn btn-ghost btn-xs" onClick={()=>navigate(`/visitors/edit/${row.uid}`)}><Pencil size={11}/> Edit</button>}
+                          {!isOut&&canUpdate&&<button className="btn btn-primary btn-xs" onClick={()=>handleOut(row)}><LogOut size={11}/> Out</button>}
+                          {canDelete&&<button className="btn btn-ghost-danger btn-xs" onClick={()=>handleDelete(row.uid)}><Trash2 size={11}/></button>}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

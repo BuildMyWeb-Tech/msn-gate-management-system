@@ -7,6 +7,8 @@ import {
   UserCog, LogOut, Menu, X,
   Building2, MapPin, BadgeCheck, Layers,
 } from "lucide-react";
+import BottomNav from "./BottomNav";
+import { useResponsive } from "../hooks/useResponsive";
 
 const SUBMENU_CONFIG = {
   "Gate":         { Icon:Layers,     path:"/setup/gates" },
@@ -37,6 +39,7 @@ const SIDEBAR_W = 220;
 
 export default function AppLayout() {
   const { user, logout }  = useAuth();
+  const { isMobile } = useResponsive();
   const { menus, loading:menusLoading } = useMenu();
   const navigate = useNavigate();
   const location = useLocation();
@@ -169,7 +172,8 @@ export default function AppLayout() {
             )}
           </div>
         </header>
-        <main className="page-content"><Outlet/></main>
+        <main className="page-content" style={{paddingBottom:isMobile?64:0}}><Outlet/></main>
+        {isMobile && <BottomNav/>}
       </div>
     </div>
   );

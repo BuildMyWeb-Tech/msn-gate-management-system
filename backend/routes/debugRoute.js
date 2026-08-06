@@ -264,3 +264,23 @@ router.get("/get-menu-rights", async (req, res) => {
     }
   }
 });
+
+// Test PR_Validate_Mobileno
+// GET /api/debug/validate-mobile?mobile=9842450500&companyid=1
+router.get("/validate-mobile", async (req, res) => {
+  const { mobile, companyid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("mobile",    sql.NVarChar(50), String(mobile || ""))
+      .input("companyid", sql.Int,          Number(companyid) || 1)
+      .execute("PR_Validate_Mobileno");
+    res.json({
+      columns:   result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+      recordset: result.recordset,
+      count:     result.recordset?.length,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});

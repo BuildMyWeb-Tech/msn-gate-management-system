@@ -5,9 +5,9 @@ const { gmsProtect } = require("../middleware/authMiddleware");
 
 router.use(gmsProtect);
 
-// ── Specific routes BEFORE /:id ───────────────────────────────
-router.get("/validate-mobile", ctrl.validateMobile); // PR_Validate_Mobileno
-router.get("/search",          ctrl.searchAll);      // PR_Search_Visitors
+// ── Specific routes BEFORE /:id — order matters ───────────────
+router.get("/search",          ctrl.search);      // GET /api/visitors/search?q=xxx
+router.get("/mobile/:mobile",  ctrl.getByMobile); // GET /api/visitors/mobile/9842450500
 
 // ── CRUD ─────────────────────────────────────────────────────
 router.get("/",          ctrl.getAll);
