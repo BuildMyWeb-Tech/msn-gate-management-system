@@ -33,4 +33,71 @@ async function deleteVisitor(uid) {
   return result.recordset?.[0] ?? null;
 }
 
-module.exports = { getVisitorGrid, iuVisitor, deleteVisitor };
+
+// ─────────────────────────────────────────────────────────────
+// PR_Validate_Mobileno @mobile nvarchar(50), @companyid int
+// Used in New Visitor form — search by mobile to auto-fill fields
+// ─────────────────────────────────────────────────────────────
+async function getVisitorByMobile({ mobile, companyId }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("mobile",    sql.NVarChar(50), String(mobile))
+    .input("companyid", sql.Int,          companyId)
+    .execute("PR_Validate_Mobileno");
+  return result.recordset || [];
+}
+
+// ─────────────────────────────────────────────────────────────
+// PR_Search_Visitors @Str nvarchar(200), @companyid int
+// Search across all visitors by mobile, name or company name
+// ─────────────────────────────────────────────────────────────
+async function searchVisitors({ str, companyId }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("Str",       sql.NVarChar(200), String(str))
+    .input("companyid", sql.Int,           companyId)
+    .execute("PR_Search_Visitors");
+  return result.recordset || [];
+}
+
+module.exports = { getVisitorGrid, iuVisitor, deleteVisitor, getVisitorByMobile, searchVisitors };
+
+// ─────────────────────────────────────────────────────────────
+// PR_Validate_Mobileno
+// @mobile nvarchar(50), @companyid int
+// Used in New Visitor form — search by mobile to auto-fill
+// ─────────────────────────────────────────────────────────────
+async function validateMobile({ mobile, companyId }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("mobile",    sql.NVarChar(50), String(mobile))
+    .input("companyid", sql.Int,          companyId)
+    .execute("PR_Validate_Mobileno");
+  const rows = result.recordset || [];
+  console.log("[validateMobile] raw:", JSON.stringify(rows[0]));
+  return rows[0] ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// PR_Search_Visitors
+// @Str nvarchar(200), @companyid int
+// Used in Visitor List search — searches by mobile/name/company
+// ─────────────────────────────────────────────────────────────
+async function searchVisitors({ str, companyId }) {
+  const pool = await poolPromise;
+  const result = await pool
+    .request()
+    .input("Str",       sql.NVarChar(200), String(str))
+    .input("companyid", sql.Int,           companyId)
+    .execute("PR_Search_Visitors");
+  console.log("[searchVisitors] count:", result.recordset?.length);
+  return result.recordset || [];
+}
+
+module.exports = {
+  getVisitorGrid, iuVisitor, deleteVisitor,
+  validateMobile, searchVisitors,
+};

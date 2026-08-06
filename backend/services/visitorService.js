@@ -121,4 +121,100 @@ async function deleteVisitor({ uid }) {
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor deleted" };
 }
 
-module.exports = { getVisitors, getVisitorById, createVisitor, updateVisitor, markVisitorOut, deleteVisitor };
+
+// ─────────────────────────────────────────────────────────────
+// Mobile search — PR_Validate_Mobileno
+// Returns last known visitor details for this mobile
+// Used in New Visitor form Search button to auto-fill fields
+// ─────────────────────────────────────────────────────────────
+async function getVisitorByMobile({ mobile, companyId }) {
+  const rows = await repo.getVisitorByMobile({ mobile, companyId });
+  console.log("[getVisitorByMobile] rows:", JSON.stringify(rows?.slice(0,1)));
+  if (!rows || rows.length === 0) return null;
+  // SP may return ResponseCode row — filter it
+  const data = rows.find(r =>
+    r.VName !== undefined || r.vname !== undefined ||
+    r.SCode !== undefined || r.Name  !== undefined
+  );
+  if (!data) return null;
+
+  // Parse Vidcard into idType + idNumber
+  const vidcard  = data.Vidcard ?? data.vidcard ?? "";
+  const sepIdx   = vidcard.indexOf(":");
+  const idType   = sepIdx > -1 ? vidcard.slice(0, sepIdx)  : "";
+  const idNumber = sepIdx > -1 ? vidcard.slice(sepIdx + 1) : vidcard;
+
+  const rawMobile = data.VMobile ?? data.vmobile ?? data.Mobile ?? mobile;
+  let mob = "";
+  try { mob = BigInt(Math.round(Number(rawMobile))).toString(); } catch { mob = String(rawMobile); }
+
+  return {
+    name:        data.VName    ?? data.vname    ?? data.Name    ?? "",
+    mobile:      mob,
+    visitorType: data.VType    ?? data.vtype    ?? "",
+    company:     data.VCompany ?? data.vcompany ?? "",
+    toMeet:      data.ToMeet   ?? data.tomeet   ?? "",
+    notes:       data.VNotes   ?? data.vnotes   ?? "",
+    vehicleNo:   data.VVehicleNo ?? data.vvehicleno ?? "",
+    idType,
+    idNumber,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Global search — PR_Search_Visitors
+// Search by mobile, name or company across all dates
+// Used in VisitorList search box
+// ─────────────────────────────────────────────────────────────
+async function searchAllVisitors({ str, companyId }) {
+  const rows = await repo.searchVisitors({ str, companyId });
+  console.log("[searchAllVisitors] count:", rows?.length);
+  return rows
+    .filter(r => r.uid !== undefined || r.VName !== undefined)
+    .map(normalise);
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Validate mobile — auto-fill visitor form
+// SP: PR_Validate_Mobileno @mobile, @companyid
+// ─────────────────────────────────────────────────────────────
+async function validateMobile({ mobile, companyId }) {
+  const row = await repo.validateMobile({ mobile, companyId });
+  if (!row) return null;
+
+  // Normalise SP response — may return same columns as visitor grid
+  const vidcard  = row.Vidcard  ?? row.vidcard  ?? "";
+  const sepIdx   = vidcard.indexOf(":");
+  const idType   = sepIdx > -1 ? vidcard.slice(0, sepIdx)  : "";
+  const idNumber = sepIdx > -1 ? vidcard.slice(sepIdx + 1) : vidcard;
+
+  const rawMobile = row.VMobile ?? row.vmobile ?? row.Mobile ?? mobile;
+  let mob = "";
+  try { mob = BigInt(Math.round(Number(rawMobile))).toString(); } catch { mob = String(rawMobile); }
+
+  return {
+    name:        row.VName    ?? row.vname    ?? row.Name    ?? "",
+    mobile:      mob,
+    visitorType: row.VType    ?? row.vtype    ?? "",
+    company:     row.VCompany ?? row.vcompany ?? "",
+    toMeet:      row.ToMeet   ?? row.tomeet   ?? "",
+    idType,
+    idNumber,
+    notes:       row.VNotes   ?? row.vnotes   ?? "",
+    vehicleNo:   row.VVehicleNo ?? row.vvehicleno ?? "",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Search visitors — for list search box
+// SP: PR_Search_Visitors @Str, @companyid
+// ─────────────────────────────────────────────────────────────
+async function searchVisitors({ str, companyId }) {
+  const rows = await repo.searchVisitors({ str, companyId });
+  return rows
+    .filter(r => r.uid !== undefined || r.VName !== undefined)
+    .map(normalise);
+}
+
+module.exports = { getVisitors, getVisitorById, createVisitor, updateVisitor, markVisitorOut, deleteVisitor, getVisitorByMobile, searchAllVisitors };

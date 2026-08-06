@@ -52,3 +52,50 @@ exports.remove = async (req, res, next) => {
     res.json({ success:true, message: result?.ResponseMessage || "Visitor deleted" });
   } catch (err) { next(err); }
 };
+
+// GET /api/visitors/mobile/:mobile — PR_Validate_Mobileno
+exports.getByMobile = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const data = await service.getVisitorByMobile({
+      mobile:    req.params.mobile,
+      companyId,
+    });
+    if (!data) return res.json({ success:false, message:"No visitor found for this mobile" });
+    res.json({ success:true, data });
+  } catch (err) { next(err); }
+};
+
+// GET /api/visitors/search?q=xxx — PR_Search_Visitors
+exports.search = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const str = req.query.q || "";
+    if (!str.trim()) return res.json({ success:true, data:[] });
+    const data = await service.searchAllVisitors({ str, companyId });
+    res.json({ success:true, data });
+  } catch (err) { next(err); }
+};
+
+
+// PR_Validate_Mobileno — GET /api/visitors/validate-mobile?mobile=9876543210
+exports.validateMobile = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const { mobile }    = req.query;
+    if (!mobile) return res.status(400).json({ success:false, message:"mobile required" });
+    const data = await service.validateMobile({ mobile, companyId });
+    res.json({ success:true, found: Boolean(data), data });
+  } catch (err) { next(err); }
+};
+
+// PR_Search_Visitors — GET /api/visitors/search?str=Naren
+exports.searchAll = async (req, res, next) => {
+  try {
+    const { companyId } = req.gmsUser;
+    const { str }       = req.query;
+    if (!str) return res.json({ success:true, data:[] });
+    const data = await service.searchVisitors({ str, companyId });
+    res.json({ success:true, data });
+  } catch (err) { next(err); }
+};
