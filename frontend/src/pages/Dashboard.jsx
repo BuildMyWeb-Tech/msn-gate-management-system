@@ -78,7 +78,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="section-title">Quick Access</div>
+      {/* <div className="section-title">Quick Access</div>
       <div className="module-grid">
         {MODULES.map(m => (
           <button key={m.path} className="module-card" onClick={() => navigate(m.path)}>
@@ -86,7 +86,7 @@ export default function Dashboard() {
             <div className="module-card-name">{m.label}</div>
           </button>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
