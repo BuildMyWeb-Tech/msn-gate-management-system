@@ -6,8 +6,8 @@ import { useResponsive } from "../hooks/useResponsive";
 import BottomNav from "./BottomNav";
 import {
   LayoutDashboard, Users, Car, Shield,
-  UserCog, LogOut, Menu, X,
-  Building2, MapPin, BadgeCheck, Layers,
+  UserCog, Menu, X,
+  Building2, MapPin, BadgeCheck, Layers, LogOut,
 } from "lucide-react";
 
 const SUBMENU_CONFIG = {
@@ -79,7 +79,7 @@ export default function AppLayout() {
       {/* Mobile backdrop */}
       <div className={`sidebar-overlay ${open ? "open" : ""}`} onClick={close}/>
 
-      {/* Sidebar — CSS handles desktop vs mobile positioning */}
+      {/* Sidebar — no logout button here anymore */}
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-icon">
@@ -91,10 +91,9 @@ export default function AppLayout() {
           </div>
         </div>
 
-        {/* Nav scrolls, footer stays pinned */}
         <nav className="sidebar-nav">
           {menusLoading ? (
-            <div style={{ padding: "20px 16px", color: "var(--text3)", fontSize: 12 }}>
+            <div style={{ padding:"20px 16px", color:"var(--text3)", fontSize:12 }}>
               Loading menus...
             </div>
           ) : nav.map((item, i) =>
@@ -111,7 +110,7 @@ export default function AppLayout() {
           )}
         </nav>
 
-        {/* Footer always at bottom — flex-shrink:0 in CSS */}
+        {/* Sidebar footer — user info only, no logout */}
         <div className="sidebar-footer">
           <div className="sidebar-user-card">
             <div className="sidebar-avatar">{initials}</div>
@@ -120,9 +119,6 @@ export default function AppLayout() {
               <div className="sidebar-user-gate">{gateLabel || "No gate"}</div>
             </div>
           </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            <LogOut size={14}/> Sign Out
-          </button>
         </div>
       </aside>
 
@@ -142,11 +138,19 @@ export default function AppLayout() {
             )}
           </div>
           <div className="topbar-right">
+            {/* Gate badge */}
             {gateLabel && (
               <div className="topbar-gate-badge">
                 <Layers size={12}/>{gateLabel}
               </div>
             )}
+            {/* Logout — icon only, tooltip on hover */}
+            <div className="topbar-logout-wrap">
+              <button className="topbar-logout-btn" onClick={handleLogout} title="Sign Out">
+                <LogOut size={17}/>
+                <span className="topbar-logout-label">Sign Out</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -154,7 +158,6 @@ export default function AppLayout() {
           <Outlet/>
         </main>
 
-        {/* Bottom nav — mobile only */}
         {isMobile && <BottomNav/>}
       </div>
     </div>

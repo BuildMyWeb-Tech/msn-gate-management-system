@@ -67,11 +67,10 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  /* Desktop: always visible */
   position: relative;
   z-index: 200;
-  /* Allow footer to show — use auto overflow on nav only */
-  overflow: hidden;
+  /* Do NOT use overflow:hidden — it clips the footer */
+  overflow: visible;
 }
 
 .sidebar-brand {
@@ -212,22 +211,42 @@ input, select, textarea { font-family: inherit; }
   /* Mobile: sidebar is fixed overlay, slides in from left */
   .sidebar {
     position: fixed;
-    top: 0; left: 0; height: 100%;
+    top: 0; left: 0;
+    /* Full viewport height — footer always visible */
+    height: 100dvh;
+    height: 100vh; /* fallback */
     transform: translateX(-100%);
     transition: transform var(--transition);
     box-shadow: none;
-    width: 260px;
+    width: 270px;
+    /* Sidebar itself does not scroll — nav scrolls inside */
+    overflow: hidden;
   }
   .sidebar.open {
     transform: translateX(0);
     box-shadow: var(--shadow);
   }
+  /* Nav scrolls, footer stays at bottom */
+  .sidebar .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  /* Footer pinned at bottom — never clipped */
+  .sidebar .sidebar-footer {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 8px;
+    /* Extra bottom space for home indicator on iOS */
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
   .sidebar-overlay.open { display: block; }
-  /* Main wrap full width on mobile */
   .main-wrap { width: 100%; }
   .page-content { padding: 14px; padding-bottom: 74px; }
   .topbar { padding: 0 14px; }
-  /* Compact spacing */
   .form-group   { margin-bottom: 10px; }
   .card         { padding: 12px; margin-bottom: 10px; }
   .card-header  { padding-bottom: 10px; margin-bottom: 10px; }
@@ -431,4 +450,47 @@ tbody tr:hover td { background: rgba(255,255,255,0.025); }
   .login-card  { padding: 28px 20px; }
   .stats-grid  { grid-template-columns: 1fr 1fr; }
   .module-grid { grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); }
+}
+
+/* ── Topbar logout button ────────────────────────────────────── */
+.topbar-logout-wrap { position: relative; }
+.topbar-logout-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 13px; font-weight: 500;
+}
+.topbar-logout-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: var(--red-dim);
+}
+/* Label hidden by default — shown on hover desktop only */
+.topbar-logout-label {
+  display: none;
+  white-space: nowrap;
+}
+@media (min-width: 768px) {
+  .topbar-logout-btn:hover .topbar-logout-label {
+    display: inline;
+  }
+}
+
+/* ── Sidebar footer — user card only, no logout ──────────────── */
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+.sidebar-user-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
 }

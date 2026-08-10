@@ -15,6 +15,20 @@ import {
   Users, Trash2, LayoutDashboard, X, Save, Eye,
 } from "lucide-react";
 
+// ── Photo helpers — module level so all components can use ───
+// JPEG base64 starts with "/9j/" — valid photo, NOT a file path
+// Only reject actual file paths: "/Photo/filename.jpg"
+function hasValidPhoto(photo) {
+  if (!photo) return false;
+  const s = String(photo).trim();
+  if (!s || s.length < 20) return false;
+  // Reject only file paths like /Photo/...
+  if (s.startsWith("/Photo/")) return false;
+  // Accept JPEG base64 (/9j/...), PNG base64 (iVBORw...), data URIs, etc.
+  return true;
+}
+
+
 const today   = () => new Date().toISOString().split("T")[0];
 const fmtTime = v => {
   if (!v) return null;
@@ -84,7 +98,7 @@ function ViewDrawer({ row, onClose }) {
   const [showFullPhoto, setShowFullPhoto] = useState(false);
   const fmtDt = v => { if(!v) return "—"; try{return new Date(v).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return v;} };
   const isOut = Boolean(row.outTime);
-  const hasPhoto = row.photo && !row.photo.startsWith("/");
+  const hasPhoto = hasValidPhoto(row.photo);
 
   return (
     <>
@@ -149,7 +163,7 @@ function MobileRowDrawer({ row, onClose, onSave, onOut, saving }) {
   const [idAlert,setIdAlert] = useState("");
   const [showFullPhoto, setShowFullPhoto] = useState(false);
   const isAlreadyOut = Boolean(row.outTime);
-  const hasPhoto = row.photo && !row.photo.startsWith("/");
+  const hasPhoto = hasValidPhoto(row.photo);
 
   const onChange = e => {
     let{name,value}=e.target;
