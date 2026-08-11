@@ -7,27 +7,20 @@ function safeMobile(raw) {
   catch { return String(raw); }
 }
 
-// Photo stored as base64 in VPhotoPath
-// JPEG base64 always starts with "/9j/" — do NOT reject strings starting with "/"
-// Only reject actual file paths like "/Photo/filename.jpg"
 function cleanPhoto(raw) {
   if (!raw) return "";
   const s = String(raw).trim();
   if (!s) return "";
-  // Reject file paths like "/Photo/..." but NOT "/9j/..." (JPEG base64)
-  if (s.startsWith("/Photo/")) return "";
-  // Strip data URI prefix if present
-  if (s.startsWith("data:image")) return s.split(",")[1] || "";
-  // Raw base64 (including JPEG base64 starting with /9j/) — return as-is
-  return s;
+  if (s.startsWith("/Photo/")) return "";           // old file path — reject
+  if (s.startsWith("data:image")) return s;         // data URI — keep as-is
+  return s; // Cloudinary URL (/9j/ base64 / https://) — return as-is
 }
 
 function normalise(r) {
   const vidcard = r.Vidcard ?? r.vidcard ?? "";
   const sep     = vidcard.indexOf(":");
-  const idType  = sep > -1 ? vidcard.slice(0, sep) : "";
+  const idType  = sep > -1 ? vidcard.slice(0, sep)  : "";
   const idNumber= sep > -1 ? vidcard.slice(sep + 1) : vidcard;
-
   return {
     uid:          Number(r.uid      ?? r.Uid      ?? 0),
     name:         r.VName    ?? r.vname    ?? "",
@@ -49,17 +42,36 @@ function normalise(r) {
   };
 }
 
+// Get local date string in YYYY-MM-DD without UTC conversion
+function localDateStr(d) {
+  const dt = d ? new Date(d) : new Date();
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+
+// Get local datetime string for SP — YYYY-MM-DD HH:MM:SS.mmm
+function localNow() {
+  const d   = new Date();
+  const pad = (n, z=2) => String(n).padStart(z,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,"0")}`;
+}
+
 function buildJson({ companyId, gateId, userId, uid, body }) {
-  const now = new Date().toISOString().replace("T", " ").slice(0, 23);
+  const now    = localNow();
+  // VDt must be local date — SP filters by this date
+  const vdt    = body.inTime
+    ? localDateStr(new Date(body.inTime)) + " " + now.split(" ")[1]
+    : now;
+
   const vidcard = body.idType && body.idNumber
     ? `${body.idType}:${body.idNumber}` : (body.idNumber || "");
+
   return JSON.stringify([{
     uid:          Number(uid) || 0,
     YearSlno:     body.yearSlno    || 0,
     GateUid:      Number(gateId)   || 0,
     Companyid:    companyId,
     Vidcard:      vidcard,
-    VDt:          body.inTime      || now,
+    VDt:          now,          // local datetime — SP uses date part for @Dt filter
     VName:        body.name        || "",
     VMobile:      parseInt(body.mobile, 10) || 0,
     VType:        body.visitorType  || "",
@@ -67,9 +79,8 @@ function buildJson({ companyId, gateId, userId, uid, body }) {
     ToMeet:       body.toMeet       || "",
     VNotes:       body.notes        || "",
     VVehicleNo:   body.vehicleNo    || "",
-    VIntime:      body.inTime       || now,
+    VIntime:      now,              // local in-time
     VOuttime:     body.outTime      || null,
-    // Send base64 directly in VPhotoPath
     VPhotoPath:   body.photo        || "",
     VisitorCount: body.visitorCount  || 1,
     Active:       1,
@@ -79,21 +90,21 @@ function buildJson({ companyId, gateId, userId, uid, body }) {
 }
 
 async function getVisitors({ companyId, gateId, date }) {
-  const d = new Date();
-  const localDate = date || `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  const rows = await repo.getVisitorGrid({ companyId, gateId: gateId || 0, date: localDate, tag: 1 });
+  const localDate = date || localDateStr();
+  const rows = await repo.getVisitorGrid({
+    companyId, gateId: gateId || 0, date: localDate, tag: 1,
+  });
   return rows.filter(r => r.uid !== undefined || r.VName !== undefined).map(normalise);
 }
 
 async function getVisitorById({ companyId, uid }) {
-  const d = new Date();
-  const localToday = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  let rows = await repo.getVisitorGrid({ companyId, gateId: 0, date: localToday, tag: 1 });
+  const today     = localDateStr();
+  let rows = await repo.getVisitorGrid({ companyId, gateId:0, date:today, tag:1 });
   let row  = rows.find(r => Number(r.uid ?? r.Uid) === Number(uid));
   if (!row) {
-    const yd = new Date(d); yd.setDate(yd.getDate() - 1);
-    const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,"0")}-${String(yd.getDate()).padStart(2,"0")}`;
-    rows = await repo.getVisitorGrid({ companyId, gateId: 0, date: yesterday, tag: 1 });
+    // Try yesterday
+    const yd = new Date(); yd.setDate(yd.getDate()-1);
+    rows = await repo.getVisitorGrid({ companyId, gateId:0, date:localDateStr(yd), tag:1 });
     row  = rows.find(r => Number(r.uid ?? r.Uid) === Number(uid));
   }
   return row ? normalise(row) : null;
@@ -101,10 +112,10 @@ async function getVisitorById({ companyId, uid }) {
 
 async function getVisitorByMobile({ mobile, companyId }) {
   const rows = await repo.getVisitorByMobile({ mobile, companyId });
-  const data = (rows || []).find(r => r.VName !== undefined || r.VMobile !== undefined);
+  const data = (rows||[]).find(r => r.VName !== undefined || r.VMobile !== undefined);
   if (!data) return null;
-  const vidcard  = data.Vidcard ?? data.vidcard ?? "";
-  const sep      = vidcard.indexOf(":");
+  const vidcard = data.Vidcard ?? data.vidcard ?? "";
+  const sep     = vidcard.indexOf(":");
   return {
     name:        data.VName    ?? "",
     mobile:      String(data.VMobile ?? mobile ?? ""),
@@ -113,7 +124,7 @@ async function getVisitorByMobile({ mobile, companyId }) {
     toMeet:      data.ToMeet   ?? "",
     notes:       "",
     vehicleNo:   "",
-    idType:  sep > -1 ? vidcard.slice(0, sep) : "",
+    idType:  sep > -1 ? vidcard.slice(0, sep)  : "",
     idNumber:sep > -1 ? vidcard.slice(sep + 1) : vidcard,
   };
 }
@@ -124,8 +135,9 @@ async function searchAllVisitors({ str, companyId }) {
 }
 
 async function createVisitor({ companyId, gateId, userId, body }) {
-  const json = buildJson({ companyId, gateId, userId, uid: 0, body });
-  const row  = await repo.iuVisitor(json);
+  const json = buildJson({ companyId, gateId, userId, uid:0, body });
+  console.log("[createVisitor] JSON:", json);
+  const row = await repo.iuVisitor(json);
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor registered" };
 }
 
@@ -136,9 +148,12 @@ async function updateVisitor({ companyId, gateId, userId, uid, body }) {
 }
 
 async function markVisitorOut({ companyId, userId, uid, body }) {
-  const now = new Date().toISOString().replace("T", " ").slice(0, 23);
-  const json = buildJson({ companyId, gateId: body.gateUid || 0, userId, uid, body: { ...body, outTime: now } });
-  const row  = await repo.iuVisitor(json);
+  const now  = localNow();
+  const json = buildJson({
+    companyId, gateId: body.gateUid||0, userId, uid,
+    body: { ...body, outTime: now },
+  });
+  const row = await repo.iuVisitor(json);
   return { ResponseMessage: row?.ResponseMessage ?? "Visitor checked out" };
 }
 

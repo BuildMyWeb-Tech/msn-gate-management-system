@@ -12,6 +12,7 @@ const vehicleRoutes = require("./routes/vehicleRoutes");
 const setupRoutes   = require("./routes/setupRoutes");
 const patrolRoutes  = require("./routes/patrolRoutes");
 const userRoutes    = require("./routes/userRoutes");
+const photoRoutes   = require("./routes/photoRoutes");
 const { notFound, errorHandler } = require("./middleware/authMiddleware");
 
 const app  = express();
@@ -21,7 +22,7 @@ app.set("trust proxy", 1);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
-// ── CORS ────────────────────────────────────────────────────
+// ── CORS ─────────────────────────────────────────────────────
 const getAllowedOrigins = () => {
   const list = [
     "http://localhost:5173",
@@ -42,34 +43,28 @@ const corsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "userid",
-    "companyid",
-    "companycode",
-    "gateid",
-    "devicetype",
+    "Content-Type", "Authorization",
+    "userid", "companyid", "companycode", "gateid", "devicetype",
   ],
   exposedHeaders: ["Content-Type"],
   optionsSuccessStatus: 200,
 };
-
-// cors middleware handles OPTIONS preflight automatically
 app.use(cors(corsOptions));
 
-// ── Rate limit ───────────────────────────────────────────────
+// ── Rate limit ────────────────────────────────────────────────
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
-// ── Body parsing ─────────────────────────────────────────────
+// ── Body parsing — MUST be before ALL routes ──────────────────
+// 20mb limit required for base64 photo uploads
 app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-// ── Logging ──────────────────────────────────────────────────
+// ── Logging ───────────────────────────────────────────────────
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 }
 
-// ── Health Check ─────────────────────────────────────────────
+// ── Health Check ──────────────────────────────────────────────
 app.get("/health", (_, res) =>
   res.json({
     success: true,
@@ -80,20 +75,21 @@ app.get("/health", (_, res) =>
   })
 );
 
-// ── Routes ───────────────────────────────────────────────────
-app.use("/api/debug",   require("./routes/debugRoute"));
+// ── Routes — all AFTER body parsing ──────────────────────────
+app.use("/api/debug",    require("./routes/debugRoute"));
 app.use("/api/auth",     authRoutes);
 app.use("/api/visitors", visitorRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/setup",    setupRoutes);
 app.use("/api/patrol",   patrolRoutes);
 app.use("/api/users",    userRoutes);
+app.use("/api/photos",   photoRoutes);   // ← Cloudinary upload — after body parsing
 
-// ── Error Handlers ───────────────────────────────────────────
+// ── Error Handlers ────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
 
-// ── Start Server ─────────────────────────────────────────────
+// ── Start Server ──────────────────────────────────────────────
 const server = app.listen(PORT, () => {
   console.log(`\n🛡️  MSN Gate Management API → port ${PORT} [${process.env.NODE_ENV || "dev"}]\n`);
 });

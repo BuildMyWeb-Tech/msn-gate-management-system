@@ -1,6 +1,7 @@
 const { poolPromise, sql } = require("../database/sqlConnection");
 
-// PR_Get_vehicles — manager SP name
+// PR_Get_vehicles — @Tag bit, @companyid int, @Dt date, @Gateuid bigint
+// (same signature as visitors SP — 4 params only)
 async function getVehicleGrid({ companyId, gateId, date, tag }) {
   const pool = await poolPromise;
   const result = await pool.request()
@@ -12,14 +13,14 @@ async function getVehicleGrid({ companyId, gateId, date, tag }) {
   return result.recordset || [];
 }
 
-// PR_IU_Vehicles @json (array format)
+// PR_IU_Vehicles @json
 async function iuVehicle(jsonData) {
   const pool = await poolPromise;
   const result = await pool.request()
     .input("json", sql.NVarChar(sql.MAX), jsonData)
     .execute("PR_IU_Vehicles");
   const row =
-    result.recordset?.length > 0 ? result.recordset[0] :
+    result.recordset?.length > 0       ? result.recordset[0] :
     result.recordsets?.[0]?.length > 0 ? result.recordsets[0][0] : null;
   return row;
 }

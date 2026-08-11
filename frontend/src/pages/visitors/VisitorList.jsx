@@ -16,16 +16,24 @@ import {
 } from "lucide-react";
 
 // ── Photo helpers — module level so all components can use ───
-// JPEG base64 starts with "/9j/" — valid photo, NOT a file path
-// Only reject actual file paths: "/Photo/filename.jpg"
+// Accepts: Cloudinary URLs (https://...) and base64 strings
+// Rejects: empty, /Photo/ file paths, short strings
 function hasValidPhoto(photo) {
   if (!photo) return false;
   const s = String(photo).trim();
-  if (!s || s.length < 20) return false;
-  // Reject only file paths like /Photo/...
-  if (s.startsWith("/Photo/")) return false;
-  // Accept JPEG base64 (/9j/...), PNG base64 (iVBORw...), data URIs, etc.
-  return true;
+  if (!s || s.length < 10) return false;
+  if (s.startsWith("/Photo/")) return false; // old file path — reject
+  return true; // Cloudinary URL or base64
+}
+
+// Get display src from photo field (URL or base64)
+function getPhotoSrc(photo) {
+  if (!photo) return null;
+  const s = String(photo).trim();
+  if (!s || s.startsWith("/Photo/")) return null;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s; // Cloudinary URL
+  if (s.startsWith("data:image")) return s; // data URI
+  return `data:image/jpeg;base64,${s}`; // raw base64
 }
 
 
@@ -54,11 +62,13 @@ const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Intervi
 // ── PhotoStamp — outside component ───────────────────────────
 function PhotoStamp({ row, size=32 }) {
   const initials = (row.name||"V").slice(0,2).toUpperCase();
-  if (row.photo && !row.photo.startsWith("/")) {
+  const src = getPhotoSrc(row.photo);
+  if (src) {
     return (
-      <img src={`data:image/jpeg;base64,${row.photo}`} alt={row.name}
+      <img src={src} alt={row.name}
         style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",
-          border:"1.5px solid var(--accent)",display:"block",flexShrink:0}}/>
+          border:"1.5px solid var(--accent)",display:"block",flexShrink:0}}
+        onError={e => { e.target.style.display="none"; }}/>
     );
   }
   return (
@@ -72,7 +82,8 @@ function PhotoStamp({ row, size=32 }) {
 
 // ── Full screen photo viewer ──────────────────────────────────
 function PhotoViewer({ photo, name, onClose }) {
-  if (!photo || photo.startsWith("/")) return null;
+  const src = getPhotoSrc(photo);
+  if (!src) return null;
   return (
     <div onClick={onClose} style={{
       position:"fixed",inset:0,zIndex:600,
@@ -86,7 +97,7 @@ function PhotoViewer({ photo, name, onClose }) {
         display:"flex",alignItems:"center",justifyContent:"center",
         cursor:"pointer",color:"#fff",
       }}><X size={20}/></button>
-      <img src={`data:image/jpeg;base64,${photo}`} alt={name}
+      <img src={src} alt={name}
         style={{maxWidth:"90vw",maxHeight:"85dvh",borderRadius:12,objectFit:"contain"}}/>
       <div style={{position:"absolute",bottom:24,color:"rgba(255,255,255,0.7)",fontSize:14}}>{name}</div>
     </div>
