@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useMenu } from "../context/MenuContext";
 import { useResponsive } from "../hooks/useResponsive";
 import BottomNav from "./BottomNav";
+import PWAInstall from "./PWAInstall";
 import {
   LayoutDashboard, Users, Car, Shield,
   UserCog, Menu, X,
@@ -21,16 +22,16 @@ const SUBMENU_CONFIG = {
   "Users":        { Icon: UserCog,    path: "/users" },
 };
 const LABEL_MAP = {
-  "Gate":"Gates", "Designation":"Designations",
-  "Visitor List":"Visitors", "Vehicles List":"Vehicles",
-  "Patrols":"Security Patrol", "Users":"User Management",
+  "Gate":"Gates","Designation":"Designations",
+  "Visitor List":"Visitors","Vehicles List":"Vehicles",
+  "Patrols":"Security Patrol","Users":"User Management",
 };
 const PAGE_LABELS = {
-  "/dashboard":"Dashboard", "/visitors":"Visitors",
-  "/visitors/new":"New Visitor", "/vehicles":"Vehicles",
-  "/vehicles/new":"New Vehicle", "/patrol":"Security Patrol",
-  "/setup/gates":"Gates", "/setup/securities":"Securities",
-  "/setup/designations":"Designations", "/setup/locations":"Locations",
+  "/dashboard":"Dashboard","/visitors":"Visitors",
+  "/visitors/new":"New Visitor","/vehicles":"Vehicles",
+  "/vehicles/new":"New Vehicle","/patrol":"Security Patrol",
+  "/setup/gates":"Gates","/setup/securities":"Securities",
+  "/setup/designations":"Designations","/setup/locations":"Locations",
   "/users":"User Management",
 };
 
@@ -42,7 +43,7 @@ export default function AppLayout() {
   const location  = useLocation();
   const [open, setOpen] = useState(false);
 
-  const handleLogout = () => { logout(); navigate("/login", { replace: true }); };
+  const handleLogout = () => { logout(); navigate("/login", { replace:true }); };
   const close = () => setOpen(false);
 
   const currentLabel = (() => {
@@ -54,21 +55,20 @@ export default function AppLayout() {
     return "";
   })();
 
-  const initials  = (user?.userName || "U").slice(0, 2).toUpperCase();
+  const initials  = (user?.userName||"U").slice(0,2).toUpperCase();
   const gateLabel = user?.gateName || (user?.gateId ? `Gate ${user.gateId}` : null);
 
   const buildNav = () => {
     if (menusLoading || menus.length === 0) return [];
-    const nav = [{ path: "/dashboard", label: "Dashboard", Icon: LayoutDashboard }];
+    const nav = [{ path:"/dashboard", label:"Dashboard", Icon:LayoutDashboard }];
     let lastGroup = null;
     menus.forEach(m => {
       const cfg = SUBMENU_CONFIG[m.subMenuName];
       if (!cfg) return;
       const group = m.menuname;
-      if (group !== lastGroup) { nav.push({ section: group }); lastGroup = group; }
-      if (!nav.find(n => n.path === cfg.path)) {
-        nav.push({ path: cfg.path, label: LABEL_MAP[m.subMenuName] || m.subMenuName, Icon: cfg.Icon });
-      }
+      if (group !== lastGroup) { nav.push({ section:group }); lastGroup = group; }
+      if (!nav.find(n => n.path === cfg.path))
+        nav.push({ path:cfg.path, label:LABEL_MAP[m.subMenuName]||m.subMenuName, Icon:cfg.Icon });
     });
     return nav;
   };
@@ -76,11 +76,9 @@ export default function AppLayout() {
 
   return (
     <div className="app-layout">
-      {/* Mobile backdrop */}
-      <div className={`sidebar-overlay ${open ? "open" : ""}`} onClick={close}/>
+      <div className={`sidebar-overlay ${open?"open":""}`} onClick={close}/>
 
-      {/* Sidebar — no logout button here anymore */}
-      <aside className={`sidebar ${open ? "open" : ""}`}>
+      <aside className={`sidebar ${open?"open":""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-icon">
             <Shield size={18} color="#000" strokeWidth={2.5}/>
@@ -93,15 +91,13 @@ export default function AppLayout() {
 
         <nav className="sidebar-nav">
           {menusLoading ? (
-            <div style={{ padding:"20px 16px", color:"var(--text3)", fontSize:12 }}>
-              Loading menus...
-            </div>
-          ) : nav.map((item, i) =>
+            <div style={{padding:"20px 16px",color:"var(--text3)",fontSize:12}}>Loading menus...</div>
+          ) : nav.map((item,i) =>
             item.section ? (
               <div key={`sec-${i}`} className="sidebar-section">{item.section}</div>
             ) : (
               <NavLink key={item.path} to={item.path}
-                className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+                className={({isActive})=>`nav-item ${isActive?"active":""}`}
                 onClick={close}>
                 <item.Icon size={16} className="nav-icon"/>
                 {item.label}
@@ -110,41 +106,34 @@ export default function AppLayout() {
           )}
         </nav>
 
-        {/* Sidebar footer — user info only, no logout */}
         <div className="sidebar-footer">
           <div className="sidebar-user-card">
             <div className="sidebar-avatar">{initials}</div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user?.userName || "User"}</div>
-              <div className="sidebar-user-gate">{gateLabel || "No gate"}</div>
+              <div className="sidebar-user-name">{user?.userName||"User"}</div>
+              <div className="sidebar-user-gate">{gateLabel||"No gate"}</div>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="main-wrap">
         <header className="topbar">
-          <button className="topbar-hamburger" onClick={() => setOpen(s => !s)}>
+          <button className="topbar-hamburger" onClick={()=>setOpen(s=>!s)}>
             {open ? <X size={20}/> : <Menu size={20}/>}
           </button>
           <div className="topbar-breadcrumb">
             <span className="topbar-title">MSN Gate Management</span>
             {currentLabel && (
-              <>
-                <span className="topbar-sep">/</span>
-                <span className="topbar-sub">{currentLabel}</span>
-              </>
+              <><span className="topbar-sep">/</span><span className="topbar-sub">{currentLabel}</span></>
             )}
           </div>
           <div className="topbar-right">
-            {/* Gate badge */}
             {gateLabel && (
               <div className="topbar-gate-badge">
                 <Layers size={12}/>{gateLabel}
               </div>
             )}
-            {/* Logout — icon only, tooltip on hover */}
             <div className="topbar-logout-wrap">
               <button className="topbar-logout-btn" onClick={handleLogout} title="Sign Out">
                 <LogOut size={17}/>
@@ -154,12 +143,12 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <main className="page-content">
-          <Outlet/>
-        </main>
-
+        <main className="page-content"><Outlet/></main>
         {isMobile && <BottomNav/>}
       </div>
+
+      {/* PWA install prompt — mobile only */}
+      <PWAInstall/>
     </div>
   );
 }
