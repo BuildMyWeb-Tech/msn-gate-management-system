@@ -13,6 +13,8 @@ import {
 
 const ID_TYPES    = ["Aadhar", "PAN", "Others"];
 const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Interview","Other"];
+// Company mandatory for these types
+const COMPANY_REQUIRED_TYPES = ["Meeting","Vendor","Contractor","Delivery"];
 const isValidMobile = v => /^[6-9]\d{9}$/.test(String(v).replace(/\D/g,""));
 
 function validateIdProof(t, n) {
@@ -164,6 +166,10 @@ export default function VisitorForm() {
     else if (!isValidMobile(form.mobile)) e.mobile = "Enter valid 10-digit mobile";
     const idErr = validateIdProof(form.idType, form.idNumber);
     if (idErr) { setIdAlert(idErr); return null; }
+    // Company mandatory for Meeting/Vendor/Contractor/Delivery
+    if (COMPANY_REQUIRED_TYPES.includes(form.visitorType) && !form.company.trim()) {
+      e.company = `Company is required for ${form.visitorType}`;
+    }
     // Photo required: either new base64 captured or existing Cloudinary URL
     if (!form.photo && !form.photoUrl) e.photo = "Photo is required";
     return e;
@@ -186,12 +192,20 @@ export default function VisitorForm() {
         setUploading(true);
         setToast({ type:"info", msg:"Uploading photo..." });
         try {
-          finalPhotoUrl = await uploadVisitorPhoto(form.photo, id || null);
-          setToast({ type:"success", msg:"Photo uploaded ✓" });
+          const result = await uploadVisitorPhoto(form.photo, id || null);
+          if (result.startsWith("data:image")) {
+            // Fallback: Cloudinary unavailable — use base64 directly
+            finalPhotoUrl = form.photo; // raw base64
+            setToast({ type:"info", msg:"Photo saved locally (Cloudinary unavailable)" });
+          } else {
+            finalPhotoUrl = result; // Cloudinary URL
+            setToast({ type:"success", msg:"Photo uploaded ✓" });
+          }
         } catch (uploadErr) {
-          console.error("[onSave] Cloudinary upload failed:", uploadErr.message);
-          setToast({ type:"error", msg:"Photo upload failed — check Cloudinary config" });
-          setSaving(false); setUploading(false); return;
+          console.error("[onSave] Photo upload failed:", uploadErr.message);
+          // Don't block save — use base64 directly as last resort
+          finalPhotoUrl = form.photo;
+          setToast({ type:"info", msg:"Saving with local photo..." });
         } finally { setUploading(false); }
       }
 
@@ -394,9 +408,17 @@ export default function VisitorForm() {
           {/* Company + To Meet */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Company</label>
-              <input name="company" className="form-input" value={form.company}
+              <label className="form-label">
+                Company
+                {COMPANY_REQUIRED_TYPES.includes(form.visitorType) && (
+                  <span className="req"> *</span>
+                )}
+              </label>
+              <input name="company"
+                className={`form-input ${errors.company?"err":""}`}
+                value={form.company}
                 onChange={onChange} placeholder="Company name"/>
+              {errors.company && <div className="form-error">{errors.company}</div>}
             </div>
             <div className="form-group">
               <label className="form-label">To Meet</label>

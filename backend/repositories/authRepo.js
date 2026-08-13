@@ -1,41 +1,58 @@
-// repositories/authRepo.js
-const { poolPromise, sql } = require('../database/sqlConnection');
+const { poolPromise, sql } = require("../database/sqlConnection");
 
-async function validateUser(username, password, companyCode) {
+// Desktop login — PR_Validate_UserLogin
+async function validateUserLogin({ username, password, companyCode }) {
   const pool = await poolPromise;
-  const result = await pool
-    .request()
-    .input('username', sql.VarChar, String(username))
-    .input('password', sql.VarChar, String(password))
-    .input('companycode', sql.VarChar, String(companyCode))
-    .execute('PR_Validate_UserLogin');
-  return result.recordset[0];
+  const result = await pool.request()
+    .input("username",    sql.VarChar(100), username)
+    .input("password",    sql.VarChar(100), password)
+    .input("companycode", sql.VarChar(50),  String(companyCode))
+    .execute("PR_Validate_UserLogin");
+  return result.recordset || [];
 }
 
-// ─────────────────────────────────────────────────────────────
-// PR_Get_ValidGates_forMobileLogin
-// @companyid int — confirmed by manager
-// ─────────────────────────────────────────────────────────────
+// Mobile login — PR_AppValidate_SecurityLogin
+async function validateSecurityLogin({ username, password, companyCode }) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("UserName",    sql.NVarChar(50),  String(username))
+    .input("Password",    sql.NVarChar(50),  String(password))
+    .input("companycode", sql.NVarChar(100), String(companyCode))
+    .execute("PR_AppValidate_SecurityLogin");
+  return result.recordset || [];
+}
+
+// Gate list — PR_Get_ValidGates_forMobileLogin
 async function getGatesForLogin(companyId) {
-  try {
-    const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input('companyid', sql.Int, Number(companyId))
-      .execute('PR_Get_ValidGates_forMobileLogin');
-
-    const rows = result.recordset || [];
-    // Print exact SP response so we know column names
-    console.log('[getGatesForLogin] count:', rows.length);
-    if (rows.length > 0) {
-      console.log('[getGatesForLogin] columns:', Object.keys(rows[0]));
-      console.log('[getGatesForLogin] first row:', JSON.stringify(rows[0]));
-    }
-    return rows;
-  } catch (err) {
-    console.error('[getGatesForLogin] SP error:', err.message);
-    return [];
-  }
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("companyid", sql.Int, Number(companyId))
+    .execute("PR_Get_ValidGates_forMobileLogin");
+  return result.recordset || [];
 }
 
-module.exports = { validateUser, getGatesForLogin };
+// Desktop menus — PR_Get_UserMenus
+async function getUserMenus(userId) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("userid", sql.Int, Number(userId))
+    .execute("PR_Get_UserMenus");
+  return result.recordset || [];
+}
+
+// Mobile menus — PR_GetApp_UserMenus
+async function getAppUserMenus(userId) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("Userid", sql.Int, Number(userId))
+    .execute("PR_GetApp_UserMenus");
+  return result.recordset || [];
+}
+
+module.exports = {
+  validateUserLogin,
+  validateSecurityLogin,
+  getGatesForLogin,
+  getUserMenus,
+  getAppUserMenus,
+};

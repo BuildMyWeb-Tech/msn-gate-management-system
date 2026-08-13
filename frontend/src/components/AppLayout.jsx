@@ -6,11 +6,12 @@ import { useResponsive } from "../hooks/useResponsive";
 import BottomNav from "./BottomNav";
 import PWAInstall from "./PWAInstall";
 import {
-  LayoutDashboard, Users, Car, Shield,
-  UserCog, Menu, X,
+  Users, Car, Shield, UserCog, Menu, X,
   Building2, MapPin, BadgeCheck, Layers, LogOut,
+  LayoutDashboard,
 } from "lucide-react";
 
+// Desktop sidebar menus — from PR_Get_UserMenus via MenuContext
 const SUBMENU_CONFIG = {
   "Gate":         { Icon: Layers,     path: "/setup/gates" },
   "Securities":   { Icon: BadgeCheck, path: "/setup/securities" },
@@ -26,6 +27,14 @@ const LABEL_MAP = {
   "Visitor List":"Visitors","Vehicles List":"Vehicles",
   "Patrols":"Security Patrol","Users":"User Management",
 };
+
+// Mobile menus — from PR_GetApp_UserMenus (menumuid + menuname)
+const MOBILE_MENU_CONFIG = {
+  "Visitors":        { Icon: Users,  path: "/visitors" },
+  "Vehicles":        { Icon: Car,    path: "/vehicles" },
+  "Security Patrol": { Icon: Shield, path: "/patrol" },
+};
+
 const PAGE_LABELS = {
   "/dashboard":"Dashboard","/visitors":"Visitors",
   "/visitors/new":"New Visitor","/vehicles":"Vehicles",
@@ -36,8 +45,8 @@ const PAGE_LABELS = {
 };
 
 export default function AppLayout() {
-  const { user, logout }  = useAuth();
-  const { menus, loading: menusLoading } = useMenu();
+  const { user, logout, isMobileUser } = useAuth();
+  const { menus: desktopMenus, loading: menusLoading } = useMenu();
   const { isMobile } = useResponsive();
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -58,40 +67,61 @@ export default function AppLayout() {
   const initials  = (user?.userName||"U").slice(0,2).toUpperCase();
   const gateLabel = user?.gateName || (user?.gateId ? `Gate ${user.gateId}` : null);
 
+  // Build nav based on login type
   const buildNav = () => {
-    if (menusLoading || menus.length === 0) return [];
     const nav = [{ path:"/dashboard", label:"Dashboard", Icon:LayoutDashboard }];
-    let lastGroup = null;
-    menus.forEach(m => {
-      const cfg = SUBMENU_CONFIG[m.subMenuName];
-      if (!cfg) return;
-      const group = m.menuname;
-      if (group !== lastGroup) { nav.push({ section:group }); lastGroup = group; }
-      if (!nav.find(n => n.path === cfg.path))
-        nav.push({ path:cfg.path, label:LABEL_MAP[m.subMenuName]||m.subMenuName, Icon:cfg.Icon });
-    });
+
+    if (isMobileUser && user?.mobileMenus?.length) {
+      // Mobile: use PR_GetApp_UserMenus result
+      user.mobileMenus.forEach(m => {
+        const cfg = MOBILE_MENU_CONFIG[m.menuname];
+        if (cfg && !nav.find(n => n.path === cfg.path)) {
+          nav.push({ path:cfg.path, label:m.menuname, Icon:cfg.Icon });
+        }
+      });
+    } else {
+      // Desktop: use PR_Get_UserMenus via MenuContext
+      if (menusLoading || !desktopMenus.length) return nav;
+      let lastGroup = null;
+      desktopMenus.forEach(m => {
+        const cfg = SUBMENU_CONFIG[m.subMenuName];
+        if (!cfg) return;
+        const group = m.menuname;
+        if (group !== lastGroup) { nav.push({ section:group }); lastGroup = group; }
+        if (!nav.find(n => n.path === cfg.path))
+          nav.push({ path:cfg.path, label:LABEL_MAP[m.subMenuName]||m.subMenuName, Icon:cfg.Icon });
+      });
+    }
     return nav;
   };
   const nav = buildNav();
+  const isLoading = !isMobileUser && menusLoading;
 
   return (
     <div className="app-layout">
       <div className={`sidebar-overlay ${open?"open":""}`} onClick={close}/>
 
       <aside className={`sidebar ${open?"open":""}`}>
-        <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">
-            <Shield size={18} color="#000" strokeWidth={2.5}/>
-          </div>
-          <div className="sidebar-brand-text">
-            <div className="sidebar-brand-name">MSN Gate</div>
-            <div className="sidebar-brand-sub">Management System</div>
+        {/* Logo */}
+        <div className="sidebar-brand" style={{ padding:"14px 16px" }}>
+          <img src="/logo.svg" alt="MSN Infotec Gate Management"
+            style={{ width:"100%", maxWidth:180, height:"auto" }}
+            onError={e => {
+              e.target.style.display = "none";
+              e.target.nextElementSibling.style.display = "flex";
+            }}/>
+          {/* Fallback if logo fails */}
+          <div style={{ display:"none", alignItems:"center", gap:8 }}>
+            <Shield size={18} color="#f59e0b"/>
+            <span style={{ fontWeight:800, fontSize:13, color:"var(--text)" }}>MSN Gate</span>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          {menusLoading ? (
-            <div style={{padding:"20px 16px",color:"var(--text3)",fontSize:12}}>Loading menus...</div>
+          {isLoading ? (
+            <div style={{ padding:"20px 16px", color:"var(--text3)", fontSize:12 }}>
+              Loading menus...
+            </div>
           ) : nav.map((item,i) =>
             item.section ? (
               <div key={`sec-${i}`} className="sidebar-section">{item.section}</div>
@@ -111,7 +141,9 @@ export default function AppLayout() {
             <div className="sidebar-avatar">{initials}</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user?.userName||"User"}</div>
-              <div className="sidebar-user-gate">{gateLabel||"No gate"}</div>
+              <div className="sidebar-user-gate">
+                {gateLabel || (isMobileUser ? "Security Guard" : "Admin")}
+              </div>
             </div>
           </div>
         </div>
@@ -134,12 +166,10 @@ export default function AppLayout() {
                 <Layers size={12}/>{gateLabel}
               </div>
             )}
-            <div className="topbar-logout-wrap">
-              <button className="topbar-logout-btn" onClick={handleLogout} title="Sign Out">
-                <LogOut size={17}/>
-                <span className="topbar-logout-label">Sign Out</span>
-              </button>
-            </div>
+            <button className="topbar-logout-btn" onClick={handleLogout} title="Sign Out">
+              <LogOut size={17}/>
+              <span className="topbar-logout-label">Sign Out</span>
+            </button>
           </div>
         </header>
 
@@ -147,7 +177,6 @@ export default function AppLayout() {
         {isMobile && <BottomNav/>}
       </div>
 
-      {/* PWA install prompt — mobile only */}
       <PWAInstall/>
     </div>
   );

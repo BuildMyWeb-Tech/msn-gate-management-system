@@ -1,80 +1,86 @@
-// services/authService.js
-const authRepo = require('../repositories/authRepo');
+const repo = require("../repositories/authRepo");
+const jwt  = require("jsonwebtoken");
 
-async function login(username, password, companyCode) {
-  const result = await authRepo.validateUser(username, password, companyCode);
-  if (result?.ResponseCode === 100) {
-    return {
-      success: true,
-      userId: result.Userid,
-      userName: result.UserName || username,
-      companyCode: String(companyCode),
-      companyId: result.companyid ?? result.Companyid ?? 1,
-      gateId: result.GateId || null,
-      gateName: result.GateName || null,
-    };
+const JWT_SECRET  = process.env.JWT_SECRET  || "msn-gms-secret";
+const JWT_EXPIRES = process.env.JWT_EXPIRES || "8h";
+
+// ── Desktop login ─────────────────────────────────────────────
+async function loginUser({ username, password, companyCode }) {
+  const rows = await repo.validateUserLogin({ username, password, companyCode });
+  const row  = rows.find(r => r.ResponseCode === 100 || r.userid || r.Userid);
+  if (!row || (row.ResponseCode && row.ResponseCode !== 100)) {
+    throw Object.assign(new Error(row?.ResponseMessage || "Invalid credentials"), { status:401 });
   }
+  const userId    = Number(row.userid ?? row.Userid ?? 0);
+  const companyId = Number(row.companyid ?? row.Companyid ?? 1);
+  const token     = jwt.sign({ userId, companyId, loginType:"desktop" }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
   return {
-    success: false,
-    message: result?.ResponseMessage || 'Invalid username or password',
+    token,
+    userId,
+    companyId,
+    userName: row.username ?? row.UserName ?? username,
+    loginType: "desktop",
   };
 }
 
-async function getGatesForLogin(companyCode) {
-  const companyId = Number(process.env.DEFAULT_COMPANY_ID) || 1;
-  const rows = await authRepo.getGatesForLogin(companyId);
-
-  // Log ALL keys from first row so we know exact column names
-  if (rows.length > 0) {
-    console.log('[getGatesForLogin] ALL columns:', Object.keys(rows[0]));
-    console.log('[getGatesForLogin] ALL rows:', JSON.stringify(rows));
+// ── Mobile login (security guard) ───────────────────────────
+async function loginSecurity({ username, password, companyCode, gateId, gateName }) {
+  const rows = await repo.validateSecurityLogin({ username, password, companyCode });
+  const row  = rows.find(r => r.ResponseCode === 100);
+  if (!row) {
+    const msg = rows[0]?.ResponseMessage || "Invalid credentials";
+    throw Object.assign(new Error(msg), { status:401 });
   }
+  const userId    = Number(row.Userid ?? row.userid ?? 0);
+  const companyId = Number(row.companyid ?? row.Companyid ?? 1);
 
-  return rows
-    .filter((r) => {
-      const keys = Object.keys(r);
-      return keys.some((k) => !['ResponseCode', 'ResponseMessage'].includes(k));
-    })
-    .map((r) => {
-      // Log each row to find the right column
-      console.log('[getGatesForLogin] row:', JSON.stringify(r));
+  // Get mobile menus
+  const menuRows = await repo.getAppUserMenus(userId);
+  const menus = menuRows
+    .filter(r => r.ResponseCode === 100 || r.menuname)
+    .map(r => ({
+      menumuid: r.menumuid,
+      menuname: r.menuname,
+    }));
 
-      // Try every possible variation
-      const id =
-        r.Uid ??
-        r.uid ??
-        r.GateId ??
-        r.gateId ??
-        r.GateUID ??
-        r.gateUID ??
-        r.GateMUID ??
-        r.gateMUID ??
-        r.Id ??
-        r.id ??
-        r.gateid ??
-        r.GATEID ??
-        0;
+  const token = jwt.sign(
+    { userId, companyId, gateId: Number(gateId)||0, loginType:"mobile" },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES }
+  );
 
-      const name =
-        r.GateName ??
-        r.gateName ??
-        r.GName ??
-        r.gname ??
-        r.Name ??
-        r.name ??
-        r.Gate ??
-        r.gate ??
-        r.GATENAME ??
-        r.gate_name ??
-        r.GateCode ??
-        r.gateCode ??
-        r.GCode ??
-        r.gcode ??
-        '';
-
-      return { id, name: name || `Gate ${id}`, code: r.GCode ?? r.gcode ?? '' };
-    })
-    .filter((g) => g.id !== 0 || g.name !== '');
+  return {
+    token,
+    userId,
+    companyId,
+    userName:  username,
+    gateId:    Number(gateId) || 0,
+    gateName:  gateName || "",
+    loginType: "mobile",
+    menus,      // mobile menus baked into login response
+  };
 }
 
-module.exports = { login, getGatesForLogin };
+// ── Gate list ─────────────────────────────────────────────────
+async function getGatesForLogin(companyCode) {
+  // Get companyId from company code — use hardcoded for now, SP uses companyid int
+  const companyId = 1; // TODO: lookup from companyCode if needed
+  console.log("[getGatesForLogin] companyId:", companyId);
+  const rows = await repo.getGatesForLogin(companyId);
+  console.log("[getGatesForLogin] count:", rows.length);
+  const gates = rows
+    .filter(r => r.gateid || r.gname)
+    .map(r => ({
+      id:   String(r.gateid ?? r.GateId ?? ""),
+      name: r.gname ?? r.GateName ?? "",
+      code: r.gcode ?? r.GateCode ?? "",
+    }));
+  return gates;
+}
+
+// ── Desktop menus ─────────────────────────────────────────────
+async function getUserMenus(userId) {
+  return repo.getUserMenus(userId);
+}
+
+module.exports = { loginUser, loginSecurity, getGatesForLogin, getUserMenus };

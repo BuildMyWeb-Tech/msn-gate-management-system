@@ -1,294 +1,236 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useResponsive } from "../../hooks/useResponsive";
-import { useSortableTable } from "../../hooks/useSortableTable";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { usePagePerms } from "../../hooks/usePagePerms";
+import { uploadSecurityPhoto } from "../../services/photoService";
 import Toast from "../../components/Toast";
 import SortableHeader from "../../components/SortableHeader";
+import { useSortableTable } from "../../hooks/useSortableTable";
 import api from "../../services/api";
 import {
-  Plus, Pencil, Trash2, RotateCcw, Save, X,
-  RefreshCw, Search, Camera, BadgeCheck,
-  ChevronDown, ChevronUp, Eye, EyeOff,
+  Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield,
 } from "lucide-react";
 
-const GENDER_OPTIONS = ["Male", "Female", "Other"];
-const EMPTY_FORM = {
-  code:"", name:"", gender:"", mobile1:"",
-  mobile2:"", password:"", addr1:"", addr2:"",
-  addr3:"", addr4:"", photo:"",
+const EMPTY = {
+  uid:0, scode:"", sname:"", gender:"", smobile1:"", smobile2:"",
+  spassword:"", address1:"", address2:"", address3:"", address4:"", address5:"",
+  photo:"", photoUrl:"", active:true,
 };
 
-// ── CameraPreview defined OUTSIDE component — no remount ─────
-function CameraPreview({ videoRef, onCapture, onCancel }) {
+// ── PhotoStamp — outside component ───────────────────────────
+function PhotoStamp({ photoUrl, name, size=32 }) {
+  const initials = (name||"S").slice(0,2).toUpperCase();
+  if (photoUrl && (photoUrl.startsWith("http") || photoUrl.startsWith("data:"))) {
+    return (
+      <img src={photoUrl} alt={name}
+        style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",
+          border:"1.5px solid var(--accent)",display:"block"}}
+        onError={e=>e.target.style.display="none"}/>
+    );
+  }
+  return (
+    <div style={{width:size,height:size,borderRadius:"50%",background:"var(--accent-dim)",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      border:"1.5px solid var(--border2)",flexShrink:0}}>
+      <span style={{fontSize:size*0.33,fontWeight:700,color:"var(--accent)"}}>{initials}</span>
+    </div>
+  );
+}
+
+// ── Camera capture — outside component ───────────────────────
+function CameraCapture({ onCapture, onCancel }) {
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const [stream, setStream] = useState(null);
+
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+      .then(s => { setStream(s); if(videoRef.current) videoRef.current.srcObject=s; })
+      .catch(() => onCancel());
+    return () => stream?.getTracks().forEach(t=>t.stop());
+  }, []);
+
+  const capture = () => {
+    const v=videoRef.current, c=canvasRef.current; if(!v||!c) return;
+    c.width=v.videoWidth||640; c.height=v.videoHeight||480;
+    c.getContext("2d").drawImage(v,0,0);
+    const b64 = c.toDataURL("image/jpeg",0.8).split(",")[1];
+    stream?.getTracks().forEach(t=>t.stop());
+    onCapture(b64);
+  };
+
   return (
     <div>
-      <video ref={videoRef} autoPlay playsInline
+      <video ref={videoRef} autoPlay playsInline muted
         style={{width:"100%",borderRadius:"var(--radius-sm)",background:"#000"}}/>
+      <canvas ref={canvasRef} style={{display:"none"}}/>
       <div style={{display:"flex",gap:8,marginTop:8}}>
-        <button className="btn btn-primary btn-sm" style={{flex:1}} onClick={onCapture}>
+        <button className="btn btn-primary btn-sm" style={{flex:1}} onClick={capture}>
           <Camera size={13}/> Capture
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}><X size={13}/> Cancel</button>
       </div>
     </div>
   );
 }
 
 export default function Securities() {
-  const { isMobile }                       = useResponsive();
   const { canWrite, canUpdate, canDelete } = usePagePerms();
-  const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
+  const [rows, setRows]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast]     = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm]       = useState(EMPTY);
+  const [errors, setErrors]   = useState({});
+  const [saving, setSaving]   = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [viewRow, setViewRow] = useState(null);
+  const { sorted, sortKey, sortDir, toggle } = useSortableTable(rows, "sname");
 
-  const [tab, setTab]             = useState(1);
-  const [rows, setRows]           = useState([]);
-  const [q, setQ]                 = useState("");
-  const [loading, setLoading]     = useState(true);
-  const [toast, setToast]         = useState(null);
-  const [form, setForm]           = useState(EMPTY_FORM);
-  const [errors, setErrors]       = useState({});
-  const [saving, setSaving]       = useState(false);
-  const [editId, setEditId]       = useState(null);
-  const [delId, setDelId]         = useState(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [cameraOn, setCameraOn]   = useState(false);
-  const [stream, setStream]       = useState(null);
-  const [showPhoto, setShowPhoto] = useState(false);
-  const [showPw, setShowPw]       = useState(false);
-
-  // ── Load ─────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/setup/securities?tag=${tab}`);
-      const raw = res.data?.data || [];
-      setRows(raw.map(r => ({
-        uid:      Number(r.UId ?? r.uid ?? 0),
-        code:     r.SCode    ?? r.scode    ?? r.code    ?? "",
-        name:     r.SName    ?? r.sname    ?? r.name    ?? "",
-        gender:   r.Gender   ?? r.gender   ?? "",
-        mobile1:  String(r.Smobile1 ?? r.smobile1 ?? r.mobile1 ?? ""),
-        mobile2:  String(r.SMobile2 ?? r.smobile2 ?? r.mobile2 ?? ""),
-        password: r.SPassword?? r.spassword?? r.password?? "",
-        addr1:    r.Address1 ?? r.address1 ?? r.addr1   ?? "",
-        addr2:    r.Address2 ?? r.address2 ?? r.addr2   ?? "",
-        addr3:    r.Address3 ?? r.address3 ?? r.addr3   ?? "",
-        addr4:    r.Address4 ?? r.address4 ?? r.addr4   ?? "",
-        photo:    r.photo    ?? "",
-        active:   r.Active   ?? r.active   ?? true,
-      })));
-    } catch { setToast({ type:"error", msg:"Failed to load securities" }); }
-    finally  { setLoading(false); }
-  }, [tab]);
+      const r = await api.get("/setup/securities");
+      setRows(r.data?.data || []);
+    } catch { setToast({type:"error",msg:"Failed to load securities"}); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = q ? rows.filter(r => (r.name||r.code||"").toLowerCase().includes(q.toLowerCase())) : rows;
-  const { sorted, sortKey, sortDir, toggle } = useSortableTable(filtered, "code");
-
-  // ── Panel ─────────────────────────────────────────────────────
-  const openAdd = () => {
-    setForm(EMPTY_FORM); setEditId(null); setErrors({});
-    setShowPhoto(false); setShowPw(false); setPanelOpen(true);
-  };
+  const openNew = () => { setForm(EMPTY); setErrors({}); setCameraOn(false); setShowForm(true); };
   const openEdit = row => {
     setForm({
-      code:row.code||"", name:row.name||"", gender:row.gender||"",
-      mobile1:String(row.mobile1||""), mobile2:String(row.mobile2||""),
-      password:row.password||"", addr1:row.addr1||"", addr2:row.addr2||"",
-      addr3:row.addr3||"", addr4:row.addr4||"", photo:row.photo||"",
+      ...row,
+      photo:    "",     // don't show old base64
+      photoUrl: row.photoUrl || row.photo || "",  // Cloudinary URL
     });
-    setEditId(row.uid); setErrors({});
-    setShowPhoto(Boolean(row.photo)); setShowPw(false); setPanelOpen(true);
+    setErrors({}); setCameraOn(false); setShowForm(true);
   };
-  const closePanel = () => { setPanelOpen(false); setEditId(null); setErrors({}); closeCam(); };
+  const closeForm = () => { setShowForm(false); setCameraOn(false); };
 
-  // ── Input handlers ────────────────────────────────────────────
   const onChange = e => {
-    const { name, value } = e.target;
-    setForm(p => ({ ...p, [name]: value }));
-    if (errors[name]) setErrors(p => ({ ...p, [name]: "" }));
-  };
-  // Fix: digits only for mobile
-  const onMobileChange = e => {
-    const { name } = e.target;
-    const digits = e.target.value.replace(/\D/g, "");
-    setForm(p => ({ ...p, [name]: digits }));
-    if (errors[name]) setErrors(p => ({ ...p, [name]: "" }));
+    const{name,value}=e.target;
+    setForm(p=>({...p,[name]:value}));
+    if(errors[name]) setErrors(p=>({...p,[name]:""}));
   };
 
-  // ── Camera ─────────────────────────────────────────────────────
-  const openCam = async () => {
-    setShowPhoto(true);
+  // Capture → upload to Cloudinary immediately
+  const handleCapture = async (base64) => {
+    setCameraOn(false);
+    setUploading(true);
+    setToast({type:"info",msg:"Uploading photo to Cloudinary..."});
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode:"user" } });
-      setStream(s); setCameraOn(true);
-      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = s; }, 100);
-    } catch { setToast({ type:"error", msg:"Camera access denied" }); }
-  };
-  const capture = () => {
-    const v=videoRef.current, c=canvasRef.current; if(!v||!c) return;
-    c.width=v.videoWidth; c.height=v.videoHeight;
-    c.getContext("2d").drawImage(v,0,0);
-    setForm(p => ({ ...p, photo: c.toDataURL("image/jpeg",.75).split(",")[1] }));
-    closeCam();
-  };
-  const closeCam = () => {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    setStream(null); setCameraOn(false);
+      const url = await uploadSecurityPhoto(base64, form.uid||"new");
+      setForm(p => ({...p, photo:"", photoUrl:url}));
+      setToast({type:"success",msg:"Photo uploaded ✓"});
+    } catch(err) {
+      setToast({type:"error",msg:"Photo upload failed: "+err.message});
+      // Keep base64 as fallback preview
+      setForm(p => ({...p, photo:base64}));
+    } finally { setUploading(false); }
   };
 
-  // ── Validation ────────────────────────────────────────────────
   const validate = () => {
-    const e = {};
-    if (!form.code.trim())    e.code    = "Code is required";
-    if (!form.name.trim())    e.name    = "Name is required";
-    if (!form.gender)         e.gender  = "Gender is required";
-    if (!form.mobile1.trim()) e.mobile1 = "Mobile 1 is required";
+    const e={};
+    if(!form.sname.trim()) e.sname="Name is required";
+    if(!form.gender)       e.gender="Gender is required";
     return e;
   };
 
-  // ── Save ──────────────────────────────────────────────────────
   const onSave = async () => {
-    const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    const errs=validate();
+    if(Object.keys(errs).length){setErrors(errs);return;}
     setSaving(true);
     try {
-      const payload = { ...form };
-      if (editId) await api.put(`/setup/securities/${editId}`, payload);
-      else        await api.post("/setup/securities", payload);
-      setToast({ type:"success", msg: editId ? "Updated successfully" : "Created successfully" });
-      closePanel(); load();
-    } catch (err) {
-      setToast({ type:"error", msg: err.response?.data?.message || "Failed to save" });
-    } finally { setSaving(false); }
+      const payload = {
+        uid:       form.uid||0,
+        SCode:     form.scode||"",
+        SName:     form.sname,
+        Gender:    form.gender,
+        Smobile1:  form.smobile1||"",
+        SMobile2:  form.smobile2||"",
+        SPassword: form.spassword||"",
+        Address1:  form.address1||"",
+        Address2:  form.address2||"",
+        Address3:  form.address3||"",
+        Address4:  form.address4||"",
+        Address5:  form.address5||"",
+        // Use Cloudinary URL — short enough for DB column
+        PhotoPath: form.photoUrl || form.photo || "",
+        Active:    form.active!==false,
+      };
+      await api.post("/setup/securities", payload);
+      setToast({type:"success",msg:form.uid?"Security updated":"Security added"});
+      closeForm(); load();
+    } catch(err){
+      setToast({type:"error",msg:err.response?.data?.message||"Failed to save"});
+    } finally{setSaving(false);}
   };
 
   const onDelete = async uid => {
     try {
       await api.delete(`/setup/securities/${uid}`);
-      setToast({ type:"success", msg:"Deleted successfully" });
-      setDelId(null); setTimeout(() => load(), 400);
-    } catch { setToast({ type:"error", msg:"Failed to delete" }); }
+      setToast({type:"success",msg:"Security deleted"});
+      load();
+    } catch { setToast({type:"error",msg:"Failed to delete"}); }
   };
 
-  // photo box — inline JSX, not a sub-component
-  const photoContent = cameraOn ? (
-    <CameraPreview videoRef={videoRef} onCapture={capture} onCancel={closeCam} />
-  ) : (
-    <div>
-      <div className="photo-box" onClick={openCam}
-        style={{ aspectRatio: isMobile ? "4/3" : "3/4" }}>
-        {form.photo
-          ? <img src={`data:image/jpeg;base64,${form.photo}`} alt="Security"
-              style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-          : <><Camera size={24} style={{ color:"var(--text3)" }}/><span className="photo-box-text">Tap to capture</span></>}
-      </div>
-      {form.photo && (
-        <button className="btn btn-ghost btn-sm" style={{ width:"100%", marginTop:8 }} onClick={openCam}>
-          <Camera size={13}/> Retake
-        </button>
-      )}
-    </div>
-  );
+  const photoSrc = form.photoUrl
+    ? form.photoUrl
+    : form.photo ? `data:image/jpeg;base64,${form.photo}` : null;
 
   return (
     <div>
-      <Toast toast={toast} onClose={() => setToast(null)} />
-      <canvas ref={canvasRef} style={{ display:"none" }} />
+      <Toast toast={toast} onClose={()=>setToast(null)}/>
 
-      {/* Header */}
       <div className="page-hdr">
         <div className="page-hdr-left">
-          <h1 style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <BadgeCheck size={20}/> Securities
-          </h1>
-          <p>{sorted.length} record{sorted.length !== 1 ? "s" : ""} &bull; {tab===1?"Active":"Inactive"}</p>
+          <h1>Securities</h1>
+          <p>{sorted.length} record{sorted.length!==1?"s":""}</p>
         </div>
         <div className="page-hdr-actions">
-          {canWrite && (
-            <button className="btn btn-primary" onClick={openAdd}><Plus size={15}/> Add New</button>
-          )}
+          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14}/></button>
+          {canWrite && <button className="btn btn-primary" onClick={openNew}><Plus size={15}/> New Security</button>}
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div className="toolbar">
-        <div className="toggle-tabs">
-          <button className={`toggle-tab ${tab===1?"active":""}`} onClick={() => setTab(1)}>Active</button>
-          <button className={`toggle-tab ${tab===0?"active":""}`} onClick={() => setTab(0)}>Inactive</button>
-        </div>
-        <div className="toolbar-search" style={{ flex:1 }}>
-          <Search size={14} className="toolbar-search-icon"/>
-          <input className="form-input" placeholder="Search securities..."
-            value={q} onChange={e => setQ(e.target.value)} />
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14}/> Refresh</button>
-      </div>
-
-      {/* Grid */}
       {loading ? <div className="spinner-page"><div className="spinner"/></div>
-      : sorted.length === 0 ? (
+      : sorted.length===0 ? (
         <div className="empty-state">
-          <div className="empty-icon"><BadgeCheck size={22}/></div>
-          <h3>No securities found</h3>
-          <p>{tab===1?"No active records":"No inactive records"}</p>
+          <div className="empty-icon"><Shield size={22}/></div>
+          <h3>No security records</h3>
         </div>
       ) : (
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th style={{ width:40 }}>#</th>
-              {!isMobile && <th style={{ width:56 }}>Photo</th>}
-              <SortableHeader label="Code"   colKey="code"    sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              <SortableHeader label="Name"   colKey="name"    sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              <SortableHeader label="Mobile" colKey="mobile1" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
-              {!isMobile && <SortableHeader label="Gender" colKey="gender" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>}
-              <th style={{ width:110 }}>Action</th>
+              <th style={{width:44}}>Photo</th>
+              <SortableHeader label="Name"   colKey="sname"   sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
+              <SortableHeader label="Code"   colKey="scode"   sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
+              <SortableHeader label="Gender" colKey="gender"  sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
+              <SortableHeader label="Mobile" colKey="smobile1" sortKey={sortKey} sortDir={sortDir} onSort={toggle}/>
+              <th>Status</th>
+              <th style={{width:120}}>Actions</th>
             </tr></thead>
             <tbody>
-              {sorted.map((row, i) => (
-                <tr key={row.uid ?? i}>
-                  <td className="td-muted">{i+1}</td>
-                  {!isMobile && (
-                    <td>
-                      {row.photo
-                        ? <img src={`data:image/jpeg;base64,${row.photo}`}
-                            style={{ width:36,height:36,borderRadius:6,objectFit:"cover" }} alt=""/>
-                        : <div style={{ width:36,height:36,background:"var(--surface2)",borderRadius:6,
-                              display:"flex",alignItems:"center",justifyContent:"center" }}>
-                            <BadgeCheck size={14} style={{ color:"var(--text3)" }}/>
-                          </div>}
-                    </td>
-                  )}
-                  <td><span className="badge-pass">{row.code||"—"}</span></td>
-                  <td style={{ fontWeight:600 }}>{row.name||"—"}</td>
-                  <td className="td-muted">{row.mobile1||"—"}</td>
-                  {!isMobile && (
-                    <td>
-                      {row.gender
-                        ? <span className={`badge ${row.gender==="Male"?"badge-blue":"badge-in"}`}>{row.gender}</span>
-                        : <span className="td-muted">—</span>}
-                    </td>
-                  )}
+              {sorted.map(row => (
+                <tr key={row.uid}>
                   <td>
-                    <div style={{ display:"flex", gap:6 }}>
-                      {tab===1 ? (
-                        <>
-                          {canUpdate && (
-                            <button className="btn btn-ghost btn-xs" onClick={() => openEdit(row)}>
-                              <Pencil size={12}/> Edit
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button className="btn btn-ghost-danger btn-xs" onClick={() => setDelId(row.uid)}>
-                              <Trash2 size={12}/>
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <button className="btn btn-ghost btn-xs"><RotateCcw size={12}/> Restore</button>
-                      )}
+                    <PhotoStamp photoUrl={row.photoUrl||row.photo} name={row.sname}/>
+                  </td>
+                  <td style={{fontWeight:600}}>{row.sname||"—"}</td>
+                  <td className="td-muted">{row.scode||"—"}</td>
+                  <td>{row.gender||"—"}</td>
+                  <td className="td-muted">{row.smobile1||"—"}</td>
+                  <td>{row.active
+                    ? <span className="badge badge-in">Active</span>
+                    : <span className="badge badge-out">Inactive</span>}
+                  </td>
+                  <td>
+                    <div style={{display:"flex",gap:4}}>
+                      <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}><Eye size={11}/> View</button>
+                      {canUpdate&&<button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}><Pencil size={11}/> Edit</button>}
+                      {canDelete&&<button className="btn btn-ghost-danger btn-xs" onClick={()=>onDelete(row.uid)}><Trash2 size={11}/></button>}
                     </div>
                   </td>
                 </tr>
@@ -298,257 +240,146 @@ export default function Securities() {
         </div>
       )}
 
-      {/* ── PANEL (drawer/sheet) ─────────────────────────────── */}
-      {panelOpen && (
+      {/* Form drawer */}
+      {showForm && (
         <>
-          {/* Visual backdrop — pointer-events none */}
-          <div style={{
-            position:"fixed", inset:0,
-            background:"rgba(0,0,0,0.55)",
-            backdropFilter:"blur(3px)",
-            zIndex:300,
-            pointerEvents:"none",
-          }}/>
-          {/* Click-to-close zone — only covers area outside panel */}
-          {isMobile ? (
-            <div onClick={closePanel} style={{
-              position:"fixed", top:0, left:0, right:0, height:"8dvh", zIndex:301,
-            }}/>
-          ) : (
-            <div onClick={closePanel} style={{
-              position:"fixed", top:0, left:0, bottom:0,
-              right:"min(680px, 90vw)", zIndex:301,
-            }}/>
-          )}
-
-          {/* Panel — zIndex above everything, receives all events */}
-          <div style={{
-            position:"fixed", zIndex:302,
-            background:"var(--surface)",
-            boxShadow:"var(--shadow)",
-            overflowY:"auto",
-            WebkitOverflowScrolling:"touch",
-            animation: isMobile ? "slideUp .3s ease" : "slideRight .25s ease",
-            ...(isMobile ? {
-              left:0, right:0, bottom:0,
-              maxHeight:"92dvh",
-              borderRadius:"20px 20px 0 0",
-            } : {
-              top:0, right:0, bottom:0,
-              width:"min(680px, 90vw)",
-              borderLeft:"1px solid var(--border)",
-            }),
-          }}>
-            {/* Drag handle */}
-            {isMobile && (
-              <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 4px" }}>
-                <div style={{ width:40,height:4,borderRadius:2,background:"var(--border2)" }}/>
-              </div>
-            )}
-
-            {/* Panel header */}
-            <div style={{
-              position:"sticky", top:0, zIndex:1,
-              background:"var(--surface)",
-              borderBottom:"1px solid var(--border)",
-              padding: isMobile ? "12px 20px" : "18px 24px",
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-            }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:36,height:36,borderRadius:"var(--radius-sm)",
-                  background:"var(--accent-dim)",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                  <BadgeCheck size={18} style={{ color:"var(--accent)" }}/>
-                </div>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:15 }}>
-                    {editId ? "Edit Security" : "New Security"}
-                  </div>
-                  <div style={{ fontSize:11, color:"var(--text3)", marginTop:1 }}>
-                    {editId ? "Update security details" : "Fill in security details"}
-                  </div>
-                </div>
-              </div>
-              <button onClick={closePanel} style={{
-                width:32,height:32,borderRadius:"var(--radius-sm)",
-                background:"var(--surface2)",border:"1px solid var(--border)",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                cursor:"pointer",color:"var(--text2)",flexShrink:0,
-              }}>
-                <X size={16}/>
-              </button>
+          <div onClick={closeForm} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(3px)",zIndex:400,pointerEvents:"none"}}/>
+          <div onClick={closeForm} style={{position:"fixed",top:0,left:0,bottom:0,right:"min(560px,92vw)",zIndex:401}}/>
+          <div style={{position:"fixed",top:0,right:0,bottom:0,zIndex:402,width:"min(560px,92vw)",background:"var(--surface)",borderLeft:"1px solid var(--border)",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+            {/* Header */}
+            <div style={{position:"sticky",top:0,background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",zIndex:1}}>
+              <div style={{fontWeight:700,fontSize:15}}>{form.uid?"Edit":"New"} Security Guard</div>
+              <button onClick={closeForm} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text2)"}}><X size={18}/></button>
             </div>
 
-            {/* Panel body — all form fields INLINE, no sub-components */}
-            <div style={{ padding: isMobile ? "16px 20px" : "20px 24px" }}>
-              <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", gap:20 }}>
-
-                {/* Left: fields */}
-                <div style={{ flex:1, minWidth:0 }}>
-
-                  <div className="form-group">
-                    <label className="form-label">Security Code <span className="req">*</span></label>
-                    <input name="code"
-                      className={`form-input ${errors.code?"err":""}`}
-                      value={form.code} onChange={onChange} placeholder="SEC-001"/>
-                    {errors.code && <div className="form-error">{errors.code}</div>}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Security Name <span className="req">*</span></label>
-                    <input name="name"
-                      className={`form-input ${errors.name?"err":""}`}
-                      value={form.name} onChange={onChange} placeholder="Full name"/>
-                    {errors.name && <div className="form-error">{errors.name}</div>}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Gender <span className="req">*</span></label>
-                    <select name="gender"
-                      className={`form-input ${errors.gender?"err":""}`}
-                      value={form.gender} onChange={onChange}>
-                      <option value="">— Select —</option>
-                      {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                    {errors.gender && <div className="form-error">{errors.gender}</div>}
-                  </div>
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label className="form-label">Mobile 1 <span className="req">*</span></label>
-                      <input name="mobile1"
-                        className={`form-input ${errors.mobile1?"err":""}`}
-                        value={form.mobile1}
-                        onChange={onMobileChange}
-                        placeholder="Primary mobile"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={15}/>
-                      {errors.mobile1 && <div className="form-error">{errors.mobile1}</div>}
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Mobile 2</label>
-                      <input name="mobile2"
-                        className="form-input"
-                        value={form.mobile2}
-                        onChange={onMobileChange}
-                        placeholder="Secondary"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={15}/>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Password</label>
-                    <div className="pw-wrap">
-                      <input name="password"
-                        type={showPw ? "text" : "password"}
-                        className="form-input"
-                        value={form.password}
-                        onChange={onChange}
-                        placeholder="Set password"
-                        style={{ paddingRight:42 }}/>
-                      <button type="button" className="pw-toggle"
-                        onClick={() => setShowPw(s => !s)}>
-                        {showPw ? <EyeOff size={15}/> : <Eye size={15}/>}
+            <div style={{padding:"20px 24px",flex:1}}>
+              {/* Photo section */}
+              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:"1px solid var(--border)"}}>
+                <label className="form-label" style={{marginBottom:10}}>
+                  Photo
+                  {uploading && <span style={{fontSize:11,color:"var(--accent)",marginLeft:8}}>Uploading...</span>}
+                </label>
+                <div style={{display:"flex",alignItems:"center",gap:16}}>
+                  <PhotoStamp photoUrl={photoSrc} name={form.sname||"?"} size={64}/>
+                  <div style={{flex:1}}>
+                    {cameraOn ? (
+                      <CameraCapture
+                        onCapture={handleCapture}
+                        onCancel={()=>setCameraOn(false)}/>
+                    ) : (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>setCameraOn(true)} disabled={uploading}>
+                        <Camera size={13}/>
+                        {photoSrc?"Retake Photo":"Capture Photo"}
                       </button>
-                    </div>
+                    )}
+                    {photoSrc && !cameraOn && (
+                      <div style={{fontSize:11,color:"var(--green)",marginTop:6}}>
+                        ✓ Photo {form.photoUrl?.startsWith("http")?"saved to Cloudinary":"captured"}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Address block */}
-                  <div style={{
-                    background:"var(--surface2)", border:"1px solid var(--border)",
-                    borderRadius:"var(--radius-sm)", padding:"12px 14px", marginBottom:14,
-                  }}>
-                    <div style={{ fontSize:11,fontWeight:700,color:"var(--text3)",
-                      textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10 }}>
-                      Address
-                    </div>
-                    <div className="form-group" style={{ marginBottom:10 }}>
-                      <input name="addr1" className="form-input"
-                        value={form.addr1} onChange={onChange} placeholder="Address line 1"/>
-                    </div>
-                    <div className="form-group" style={{ marginBottom:10 }}>
-                      <input name="addr2" className="form-input"
-                        value={form.addr2} onChange={onChange} placeholder="Address line 2"/>
-                    </div>
-                    <div className="form-row">
-                      <input name="addr3" className="form-input"
-                        value={form.addr3} onChange={onChange} placeholder="City / Area"/>
-                      <input name="addr4" className="form-input"
-                        value={form.addr4} onChange={onChange} placeholder="State / Pin"/>
-                    </div>
-                  </div>
-
-                  {/* Mobile: photo toggle button */}
-                  {isMobile && (
-                    <div style={{ marginBottom:14 }}>
-                      <button className="btn btn-ghost"
-                        style={{ width:"100%", justifyContent:"center", marginBottom: showPhoto ? 10 : 0 }}
-                        onClick={() => setShowPhoto(s => !s)}>
-                        <Camera size={15}/>
-                        {form.photo ? "View / Retake Photo" : "Add Photo"}
-                        {showPhoto ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-                      </button>
-                      {showPhoto && photoContent}
-                    </div>
-                  )}
                 </div>
+              </div>
 
-                {/* Right: photo (desktop only) */}
-                {!isMobile && (
-                  <div style={{ width:170, flexShrink:0 }}>
-                    <div style={{ fontSize:11,fontWeight:700,color:"var(--text2)",
-                      textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8 }}>
-                      Photo
-                    </div>
-                    {photoContent}
-                  </div>
-                )}
+              {/* Basic info */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Security Code</label>
+                  <input name="scode" className="form-input" value={form.scode} onChange={onChange} placeholder="S001"/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Gender <span className="req">*</span></label>
+                  <select name="gender" className={`form-input ${errors.gender?"err":""}`} value={form.gender} onChange={onChange}>
+                    <option value="">— Select —</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  {errors.gender&&<div className="form-error">{errors.gender}</div>}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Full Name <span className="req">*</span></label>
+                <input name="sname" className={`form-input ${errors.sname?"err":""}`}
+                  value={form.sname} onChange={onChange} placeholder="Security guard full name"/>
+                {errors.sname&&<div className="form-error">{errors.sname}</div>}
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Mobile 1</label>
+                  <input name="smobile1" className="form-input" value={form.smobile1} onChange={onChange} inputMode="numeric"/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mobile 2</label>
+                  <input name="smobile2" className="form-input" value={form.smobile2} onChange={onChange} inputMode="numeric"/>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <input name="spassword" className="form-input" value={form.spassword} onChange={onChange} placeholder="Login password"/>
+              </div>
+              <div style={{marginBottom:8,fontWeight:600,fontSize:12,color:"var(--text2)"}}>Address</div>
+              {["address1","address2","address3","address4","address5"].map((f,i) => (
+                <div className="form-group" key={f} style={{marginBottom:8}}>
+                  <input name={f} className="form-input" value={form[f]} onChange={onChange}
+                    placeholder={`Address line ${i+1}`}/>
+                </div>
+              ))}
+              <div className="form-group">
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={form.active!==false}
+                    onChange={e=>setForm(p=>({...p,active:e.target.checked}))}
+                    style={{accentColor:"var(--accent)"}}/>
+                  <span className="form-label" style={{margin:0}}>Active</span>
+                </label>
               </div>
             </div>
 
-            {/* Panel footer */}
-            <div style={{
-              position:"sticky", bottom:0,
-              background:"var(--surface)",
-              borderTop:"1px solid var(--border)",
-              padding: isMobile ? "12px 20px 20px" : "14px 24px",
-              display:"flex", gap:10,
-            }}>
-              <button className="btn btn-primary" onClick={onSave} disabled={saving}
-                style={{ flex:1, padding:"11px" }}>
-                {saving
-                  ? <><span className="spin-sm" style={{ borderColor:"rgba(0,0,0,.25)",borderTopColor:"#000" }}/>Saving...</>
-                  : <><Save size={16}/>{editId ? "Save Changes" : "Create Security"}</>}
+            {/* Footer */}
+            <div style={{position:"sticky",bottom:0,background:"var(--surface)",borderTop:"1px solid var(--border)",padding:"14px 24px",display:"flex",gap:8}}>
+              <button className="btn btn-primary" onClick={onSave} disabled={saving||uploading} style={{flex:1}}>
+                {saving?<><span className="spin-sm"/>Saving...</>:<><Save size={15}/>Save</>}
               </button>
-              <button className="btn btn-ghost" onClick={closePanel} style={{ padding:"11px 20px" }}>
-                Cancel
-              </button>
+              <button className="btn btn-ghost" onClick={closeForm}><X size={14}/> Cancel</button>
             </div>
           </div>
         </>
       )}
 
-      {/* Delete confirm */}
-      {delId && (
-        <div className="modal-overlay" onClick={() => setDelId(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-body">
-              <div className="confirm-body">
-                <div className="confirm-icon danger"><Trash2 size={24}/></div>
-                <div className="confirm-title">Delete Security?</div>
-                <p className="confirm-desc">This record will be moved to inactive.</p>
-              </div>
+      {/* View drawer */}
+      {viewRow && (
+        <>
+          <div onClick={()=>setViewRow(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(3px)",zIndex:400,pointerEvents:"none"}}/>
+          <div onClick={()=>setViewRow(null)} style={{position:"fixed",top:0,left:0,bottom:0,right:"min(480px,92vw)",zIndex:401}}/>
+          <div style={{position:"fixed",top:0,right:0,bottom:0,zIndex:402,width:"min(480px,92vw)",background:"var(--surface)",borderLeft:"1px solid var(--border)",overflowY:"auto"}}>
+            <div style={{position:"sticky",top:0,background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}><Eye size={16}/>Security Details</div>
+              <button onClick={()=>setViewRow(null)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text2)"}}><X size={18}/></button>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setDelId(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => onDelete(delId)}>
-                <Trash2 size={14}/> Delete
-              </button>
+            <div style={{padding:"16px 20px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16,padding:14,background:"var(--surface2)",borderRadius:"var(--radius-sm)"}}>
+                <PhotoStamp photoUrl={viewRow.photoUrl||viewRow.photo} name={viewRow.sname} size={64}/>
+                <div>
+                  <div style={{fontWeight:700,fontSize:16}}>{viewRow.sname}</div>
+                  <div style={{fontSize:12,color:"var(--text2)"}}>{viewRow.scode} · {viewRow.gender}</div>
+                  <div style={{marginTop:6}}>{viewRow.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</div>
+                </div>
+              </div>
+              {[
+                ["Mobile 1",  viewRow.smobile1||"—"],
+                ["Mobile 2",  viewRow.smobile2||"—"],
+                ["Address 1", viewRow.address1||"—"],
+                ["Address 2", viewRow.address2||"—"],
+                ["Address 3", viewRow.address3||"—"],
+              ].map(([l,v])=>(
+                <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
+                  <span style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase"}}>{l}</span>
+                  <span style={{fontSize:13}}>{v}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

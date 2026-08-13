@@ -50,3 +50,42 @@ router.get("/validate-mobile", async (req, res) => {
 });
 
 module.exports = router;
+
+// Test PR_AppValidate_SecurityLogin
+// GET /api/debug/app-login?username=S001&password=S001&companycode=514670
+router.get("/app-login", async (req, res) => {
+  const { username, password, companycode } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("UserName",    sql.NVarChar(50),  String(username||""))
+      .input("Password",    sql.NVarChar(50),  String(password||""))
+      .input("companycode", sql.NVarChar(100), String(companycode||""))
+      .execute("PR_AppValidate_SecurityLogin");
+    res.json({
+      columns:   result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+      recordset: result.recordset,
+      count:     result.recordset?.length,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Test PR_GetApp_UserMenus
+// GET /api/debug/app-menus?userid=1
+router.get("/app-menus", async (req, res) => {
+  const { userid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Userid", sql.Int, Number(userid)||1)
+      .execute("PR_GetApp_UserMenus");
+    res.json({
+      columns:    result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+      recordset:  result.recordset,
+      count:      result.recordset?.length,
+      recordsets: result.recordsets?.length,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
