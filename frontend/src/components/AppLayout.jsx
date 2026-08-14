@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 
-// Desktop sidebar menus — from PR_Get_UserMenus via MenuContext
 const SUBMENU_CONFIG = {
   "Gate":         { Icon: Layers,     path: "/setup/gates" },
   "Securities":   { Icon: BadgeCheck, path: "/setup/securities" },
@@ -27,14 +26,11 @@ const LABEL_MAP = {
   "Visitor List":"Visitors","Vehicles List":"Vehicles",
   "Patrols":"Security Patrol","Users":"User Management",
 };
-
-// Mobile menus — from PR_GetApp_UserMenus (menumuid + menuname)
 const MOBILE_MENU_CONFIG = {
   "Visitors":        { Icon: Users,  path: "/visitors" },
   "Vehicles":        { Icon: Car,    path: "/vehicles" },
   "Security Patrol": { Icon: Shield, path: "/patrol" },
 };
-
 const PAGE_LABELS = {
   "/dashboard":"Dashboard","/visitors":"Visitors",
   "/visitors/new":"New Visitor","/vehicles":"Vehicles",
@@ -67,30 +63,26 @@ export default function AppLayout() {
   const initials  = (user?.userName||"U").slice(0,2).toUpperCase();
   const gateLabel = user?.gateName || (user?.gateId ? `Gate ${user.gateId}` : null);
 
-  // Build nav based on login type
   const buildNav = () => {
     const nav = [{ path:"/dashboard", label:"Dashboard", Icon:LayoutDashboard }];
-
     if (isMobileUser && user?.mobileMenus?.length) {
-      // Mobile: use PR_GetApp_UserMenus result
       user.mobileMenus.forEach(m => {
         const cfg = MOBILE_MENU_CONFIG[m.menuname];
-        if (cfg && !nav.find(n => n.path === cfg.path)) {
+        if (cfg && !nav.find(n => n.path === cfg.path))
           nav.push({ path:cfg.path, label:m.menuname, Icon:cfg.Icon });
-        }
       });
     } else {
-      // Desktop: use PR_Get_UserMenus via MenuContext
-      if (menusLoading || !desktopMenus.length) return nav;
-      let lastGroup = null;
-      desktopMenus.forEach(m => {
-        const cfg = SUBMENU_CONFIG[m.subMenuName];
-        if (!cfg) return;
-        const group = m.menuname;
-        if (group !== lastGroup) { nav.push({ section:group }); lastGroup = group; }
-        if (!nav.find(n => n.path === cfg.path))
-          nav.push({ path:cfg.path, label:LABEL_MAP[m.subMenuName]||m.subMenuName, Icon:cfg.Icon });
-      });
+      if (!menusLoading && desktopMenus.length) {
+        let lastGroup = null;
+        desktopMenus.forEach(m => {
+          const cfg = SUBMENU_CONFIG[m.subMenuName];
+          if (!cfg) return;
+          const group = m.menuname;
+          if (group !== lastGroup) { nav.push({ section:group }); lastGroup = group; }
+          if (!nav.find(n => n.path === cfg.path))
+            nav.push({ path:cfg.path, label:LABEL_MAP[m.subMenuName]||m.subMenuName, Icon:cfg.Icon });
+        });
+      }
     }
     return nav;
   };
@@ -102,26 +94,42 @@ export default function AppLayout() {
       <div className={`sidebar-overlay ${open?"open":""}`} onClick={close}/>
 
       <aside className={`sidebar ${open?"open":""}`}>
-        {/* Logo */}
-        <div className="sidebar-brand" style={{ padding:"14px 16px" }}>
-          <img src="/logo.svg" alt="MSN Infotec Gate Management"
-            style={{ width:"100%", maxWidth:180, height:"auto" }}
-            onError={e => {
-              e.target.style.display = "none";
-              e.target.nextElementSibling.style.display = "flex";
-            }}/>
-          {/* Fallback if logo fails */}
-          <div style={{ display:"none", alignItems:"center", gap:8 }}>
-            <Shield size={18} color="#f59e0b"/>
-            <span style={{ fontWeight:800, fontSize:13, color:"var(--text)" }}>MSN Gate</span>
-          </div>
+        {/* Logo row — MSN Infotec logo + logout icon */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"12px 14px",
+          borderBottom:"1px solid var(--border)",
+          flexShrink:0,
+        }}>
+          {/* MSN Infotec logo */}
+          <img
+            src="/msn-logo.png"
+            alt="MSN Infotec"
+            style={{ height:36, width:"auto", objectFit:"contain" }}
+            onError={e => { e.target.style.display="none"; }}
+          />
+          {/* Logout icon — at end of logo row */}
+          <button
+            onClick={handleLogout}
+            title="Sign Out"
+            style={{
+              background:"none", border:"1px solid var(--border)",
+              borderRadius:"var(--radius-xs)",
+              width:32, height:32,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              cursor:"pointer", color:"var(--text3)",
+              flexShrink:0, marginLeft:8,
+              transition:"all var(--transition)",
+            }}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--red)";e.currentTarget.style.color="var(--red)";e.currentTarget.style.background="var(--red-dim)";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.color="var(--text3)";e.currentTarget.style.background="none";}}>
+            <LogOut size={15}/>
+          </button>
         </div>
 
         <nav className="sidebar-nav">
           {isLoading ? (
-            <div style={{ padding:"20px 16px", color:"var(--text3)", fontSize:12 }}>
-              Loading menus...
-            </div>
+            <div style={{padding:"20px 16px",color:"var(--text3)",fontSize:12}}>Loading menus...</div>
           ) : nav.map((item,i) =>
             item.section ? (
               <div key={`sec-${i}`} className="sidebar-section">{item.section}</div>
@@ -136,13 +144,14 @@ export default function AppLayout() {
           )}
         </nav>
 
+        {/* User info at bottom — no logout button here */}
         <div className="sidebar-footer">
           <div className="sidebar-user-card">
             <div className="sidebar-avatar">{initials}</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user?.userName||"User"}</div>
               <div className="sidebar-user-gate">
-                {gateLabel || (isMobileUser ? "Security Guard" : "Admin")}
+                {gateLabel||(isMobileUser?"Security Guard":"Admin")}
               </div>
             </div>
           </div>
@@ -152,25 +161,40 @@ export default function AppLayout() {
       <div className="main-wrap">
         <header className="topbar">
           <button className="topbar-hamburger" onClick={()=>setOpen(s=>!s)}>
-            {open ? <X size={20}/> : <Menu size={20}/>}
+            {open?<X size={20}/>:<Menu size={20}/>}
           </button>
-          <div className="topbar-breadcrumb">
-            <span className="topbar-title">MSN Gate Management</span>
+
+          {/* Compact title — reduced size */}
+          <div className="topbar-breadcrumb" style={{minWidth:0,flex:1}}>
+            <span style={{fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap"}}>
+              MSN Gate
+            </span>
             {currentLabel && (
-              <><span className="topbar-sep">/</span><span className="topbar-sub">{currentLabel}</span></>
+              <>
+                <span className="topbar-sep" style={{margin:"0 4px"}}>/</span>
+                <span style={{fontSize:12,color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {currentLabel}
+                </span>
+              </>
             )}
           </div>
-          <div className="topbar-right">
-            {gateLabel && (
-              <div className="topbar-gate-badge">
-                <Layers size={12}/>{gateLabel}
-              </div>
-            )}
-            <button className="topbar-logout-btn" onClick={handleLogout} title="Sign Out">
-              <LogOut size={17}/>
-              <span className="topbar-logout-label">Sign Out</span>
-            </button>
-          </div>
+
+          {/* Gate badge — compact */}
+          {gateLabel && (
+            <div style={{
+              display:"flex", alignItems:"center", gap:4,
+              padding:"4px 8px",
+              background:"var(--accent-dim)",
+              border:"1px solid rgba(245,158,11,0.25)",
+              borderRadius:20,
+              fontSize:11, fontWeight:600, color:"var(--accent)",
+              whiteSpace:"nowrap", flexShrink:0,
+              maxWidth:130, overflow:"hidden", textOverflow:"ellipsis",
+            }}>
+              <Layers size={11} style={{flexShrink:0}}/>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{gateLabel}</span>
+            </div>
+          )}
         </header>
 
         <main className="page-content"><Outlet/></main>

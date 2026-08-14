@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-970124e6'], (function (workbox) { 'use strict';
+define(['./workbox-caf3a6a6'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -78,20 +78,25 @@ define(['./workbox-970124e6'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "0.sevoeu9frso"
+    "revision": "0.5mkm0pn8vso"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^https?:\/\/.*\/api\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "gms-api-cache",
+  workbox.registerRoute(/^https:\/\/res\.cloudinary\.com\/.*/i, new workbox.CacheFirst({
+    "cacheName": "cloudinary-images",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 200,
+      maxAgeSeconds: 2592000
+    })]
+  }), 'GET');
+  workbox.registerRoute(/^https:\/\/.*\.onrender\.com\/api\/.*/i, new workbox.NetworkFirst({
+    "cacheName": "api-cache",
     "networkTimeoutSeconds": 10,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,
       maxAgeSeconds: 300
-    }), new workbox.CacheableResponsePlugin({
-      statuses: [0, 200]
     })]
   }), 'GET');
 
