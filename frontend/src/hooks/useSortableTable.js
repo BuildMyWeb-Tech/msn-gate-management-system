@@ -1,30 +1,18 @@
-// hooks/useSortableTable.js
-// Returns sorted data + sort state + toggle function
 import { useState, useMemo } from "react";
-
-export function useSortableTable(data, defaultKey = null, defaultDir = "asc") {
+export function useSortableTable(data, defaultKey = "") {
   const [sortKey, setSortKey] = useState(defaultKey);
-  const [sortDir, setSortDir] = useState(defaultDir);
-
+  const [sortDir, setSortDir] = useState("asc");
   const toggle = (key) => {
-    if (sortKey === key) {
-      setSortDir(d => d === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
+    if (key === sortKey) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
   };
-
   const sorted = useMemo(() => {
-    if (!sortKey) return data;
-    return [...data].sort((a, b) => {
-      const av = (a[sortKey] ?? "").toString().toLowerCase();
-      const bv = (b[sortKey] ?? "").toString().toLowerCase();
-      if (av < bv) return sortDir === "asc" ? -1 : 1;
-      if (av > bv) return sortDir === "asc" ? 1  : -1;
-      return 0;
+    if (!sortKey) return [...(data || [])];
+    return [...(data || [])].sort((a, b) => {
+      const av = a[sortKey] ?? ""; const bv = b[sortKey] ?? "";
+      const cmp = String(av).localeCompare(String(bv), undefined, { numeric:true });
+      return sortDir === "asc" ? cmp : -cmp;
     });
   }, [data, sortKey, sortDir]);
-
   return { sorted, sortKey, sortDir, toggle };
 }
