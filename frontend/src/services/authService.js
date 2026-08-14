@@ -1,17 +1,5 @@
-import axios from "axios";
-const BASE = import.meta.env.VITE_API_URL || "/api";
+import api from "./api";
 
-export const loginUser = async ({ username, password, companyCode, gateId }) => {
-  const res = await axios.post(`${BASE}/auth/login`, {
-    username,
-    password,
-    companyCode: String(companyCode),  // VarChar
-    gateId,
-  });
-  return res.data;
-};
-
-export const getGates = async (companyCode = "514670") => {
-  const res = await axios.get(`${BASE}/auth/gates?companyCode=${companyCode}`);
-  return res.data;
-};
+export const loginUser     = (body)        => api.post("/auth/login",        body).then(r => r.data);
+export const loginSecurity = (body)        => api.post("/auth/mobile-login", body).then(r => r.data);
+export const getGates      = (companyCode) => api.get(`/auth/gates?companyCode=${companyCode}`).then(r => r.data);
