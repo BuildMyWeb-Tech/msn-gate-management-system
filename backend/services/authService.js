@@ -33,6 +33,8 @@ async function loginSecurity({ username, password, companyCode, gateId, gateName
   }
   const userId    = Number(row.Userid ?? row.userid ?? 0);
   const companyId = Number(row.companyid ?? row.Companyid ?? 1);
+  // Capture security guard's name from SP (Sname field)
+  const sname     = row.Sname ?? row.sname ?? row.SName ?? null;
 
   // Get mobile menus
   const menuRows = await repo.getAppUserMenus(userId);
@@ -53,7 +55,7 @@ async function loginSecurity({ username, password, companyCode, gateId, gateName
     token,
     userId,
     companyId,
-    userName:  username,
+    userName:  sname || username,  // use Sname if available, fallback to login username
     gateId:    Number(gateId) || 0,
     gateName:  gateName || "",
     loginType: "mobile",

@@ -1,7 +1,6 @@
 const { poolPromise, sql } = require("../database/sqlConnection");
 
-// PR_Get_vehicles — @Tag bit, @companyid int, @Dt date, @Gateuid bigint
-// (same signature as visitors SP — 4 params only)
+// PR_GetVehicleData_FrontGrid @Tag bit, @companyid int, @Dt date, @GateUid bigint
 async function getVehicleGrid({ companyId, gateId, date, tag }) {
   const pool = await poolPromise;
   const result = await pool.request()
@@ -9,7 +8,7 @@ async function getVehicleGrid({ companyId, gateId, date, tag }) {
     .input("companyid", sql.Int,    companyId)
     .input("Dt",        sql.Date,   new Date(date))
     .input("Gateuid",   sql.BigInt, gateId || 0)
-    .execute("PR_Get_vehicles");
+    .execute("PR_GetVehicleData_FrontGrid");
   return result.recordset || [];
 }
 
