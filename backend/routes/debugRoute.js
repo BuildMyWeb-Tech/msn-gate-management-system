@@ -89,3 +89,20 @@ router.get("/app-menus", async (req, res) => {
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// GET /api/debug/user-menus?userid=1
+router.get("/user-menus", async (req, res) => {
+  const { userid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("userid", sql.Int, Number(userid)||1)
+      .execute("PR_Get_UserMenus");
+    res.json({
+      columns:   result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+      recordset: result.recordset,
+      count:     result.recordset?.length,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});

@@ -4,28 +4,50 @@ import api from "../services/api";
 
 const MenuContext = createContext(null);
 
-export const MENU_ROUTE_MAP = {
-  "Gate":          "/setup/gates",
-  "Securities":    "/setup/securities",
-  "Designation":   "/setup/designations",
-  "Locations":     "/setup/locations",
-  "Visitor List":  "/visitors",
-  "Vehicles List": "/vehicles",
-  "Patrols":       "/patrol",
-  "Users":         "/users",
+// ── Dynamic route mapping ─────────────────────────────────────
+// Exact SubMenuName values from PR_Get_UserMenus SP (lowercase for matching)
+// Format: "submenuname from sp" : "route path"
+const ROUTE_MAP = {
+  // Setup — menumuid:1
+  "gate":            "/setup/gates",
+  "securities":      "/setup/securities",
+  "designation":     "/setup/designations",
+  "comp. vehicles":  "/setup/cop-vehicles",   // menudid:7 — Comp. Vehicles
+  "patrol points":   "/setup/patrol-points",  // menudid:4 — was Locations
+  "patrol plan":     "/setup/patrol-plan",    // menudid:12
+  // Visitors — menumuid:2
+  "visitors":        "/visitors",             // menudid:5
+  "reports":         "/reports",              // menudid:6 (visitors reports)
+  // Vehicles — menumuid:3
+  "vehicles list":   "/vehicles",             // menudid:8
+  // Security Patrol — menumuid:4
+  "patrols":         "/patrol",               // menudid:11
+  // User Management — menumuid:5
+  "users":           "/users",                // menudid:10
 };
+
+// Display label overrides (SubMenuName → nicer label)
+const LABEL_MAP = {
+  "gate":           "Gates",
+  "designation":    "Designations",
+  "comp. vehicles": "Comp. Vehicles",
+  "patrol points":  "Patrol Points",
+  "patrol plan":    "Patrol Plan",
+  "vehicles list":  "Vehicles",
+  "patrols":        "Security Patrol",
+};
+
+export { ROUTE_MAP, LABEL_MAP };
 
 export function MenuProvider({ children }) {
   const { user, isAuthenticated, isLoading: authLoading, isMobileUser } = useAuth();
   const [menus, setMenus]     = useState([]);
-  // Key fix: mobile users never need to load menus from API
-  // Start as false for mobile, true only for desktop (needs API call)
+  const [rawMenus, setRawMenus] = useState([]); // raw SP data
   const [loading, setLoading] = useState(() => {
     try {
       const stored = localStorage.getItem("gms-auth");
       if (stored) {
         const p = JSON.parse(stored);
-        // If stored user is mobile — no loading needed
         if (p?.loginType === "mobile") return false;
       }
     } catch {}
@@ -33,34 +55,24 @@ export function MenuProvider({ children }) {
   });
 
   useEffect(() => {
-    // Wait for auth to finish resolving from localStorage
     if (authLoading) return;
+    if (isMobileUser) { setLoading(false); return; }
+    if (!isAuthenticated || !user?.userId) { setMenus([]); setRawMenus([]); setLoading(false); return; }
 
-    // Mobile users: menus come from login response stored in user.mobileMenus
-    // No API call needed — set loading false immediately
-    if (isMobileUser) {
-      setLoading(false);
-      return;
-    }
-
-    // Not authenticated — clear and stop loading
-    if (!isAuthenticated || !user?.userId) {
-      setMenus([]);
-      setLoading(false);
-      return;
-    }
-
-    // Desktop: fetch sidebar menus from server
     setLoading(true);
+    // Use PR_Get_UserMenus via /users/sidebar/:userId
     api.get(`/users/sidebar/${user.userId}`)
-      .then(r => setMenus(r.data?.data || []))
-      .catch(() => setMenus([]))
+      .then(r => {
+        const data = r.data?.data || [];
+        setMenus(data);
+        setRawMenus(data);
+      })
+      .catch(() => { setMenus([]); setRawMenus([]); })
       .finally(() => setLoading(false));
-
   }, [authLoading, isAuthenticated, user?.userId, isMobileUser]);
 
   return (
-    <MenuContext.Provider value={{ menus, loading }}>
+    <MenuContext.Provider value={{ menus, rawMenus, loading }}>
       {children}
     </MenuContext.Provider>
   );
