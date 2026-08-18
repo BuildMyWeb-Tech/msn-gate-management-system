@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 const ID_TYPES    = ["Aadhar", "PAN", "Others"];
-const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Interview","Other"];
+const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Service","Interview","Other"];
 // Company mandatory for these types
 const COMPANY_REQUIRED_TYPES = ["Meeting","Vendor","Contractor","Delivery"];
 const isValidMobile = v => /^[6-9]\d{9}$/.test(String(v).replace(/\D/g,""));
@@ -96,9 +96,10 @@ export default function VisitorForm() {
   const onChange = e => {
     let { name, value } = e.target;
     if (name === "idNumber") {
-      if (form.idType === "Aadhar") value = value.replace(/\D/g,"").slice(0,12);
-      if (form.idType === "PAN")    value = value.replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,10);
-      if (form.idType === "Others") value = value.slice(0,25);
+      if (form.idType === "Aadhar")          value = value.replace(/\D/g,"").slice(0,12);
+      if (form.idType === "PAN")             value = value.replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,10);
+      if (form.idType === "Others")          value = value.slice(0,25);
+      if (form.idType === "Driving License") value = value.replace(/[^A-Za-z0-9-]/g,"").toUpperCase().slice(0,20);
     }
     if (name === "idType") { setForm(p => ({ ...p, idType:value, idNumber:"" })); return; }
     setForm(p => ({ ...p, [name]:value }));
@@ -384,7 +385,7 @@ export default function VisitorForm() {
               <input name="idNumber" className="form-input"
                 value={form.idNumber} onChange={onChange}
                 inputMode={form.idType==="Aadhar"?"numeric":"text"}
-                placeholder={!form.idType?"Select ID type first":form.idType==="Aadhar"?"12 digits":form.idType==="PAN"?"ABCDE1234F":"ID number"}
+                placeholder={!form.idType?"Select ID type first":form.idType==="Aadhar"?"12 digits":form.idType==="PAN"?"ABCDE1234F":form.idType==="Driving License"?"e.g. TN0120110012345":"ID number"}
                 disabled={!form.idType}/>
             </div>
           </div>

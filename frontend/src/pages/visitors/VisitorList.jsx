@@ -56,8 +56,8 @@ function validateIdProof(t,n){
   return null;
 }
 
-const ID_TYPES    = ["Aadhar","PAN","Others"];
-const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Interview","Other"];
+const ID_TYPES    = ["Aadhar","PAN","Others","Driving License"];
+const VISIT_TYPES = ["Meeting","Guest","Vendor","Contractor","Delivery","Service","Interview","Other"];
 
 // ── PhotoStamp — outside component ───────────────────────────
 function PhotoStamp({ row, size=32 }) {

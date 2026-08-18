@@ -7,7 +7,7 @@ import { uploadVehiclePhoto } from "../../services/photoService";
 import Toast from "../../components/Toast";
 import { ArrowLeft, Camera, LogOut, Save, Car, Search, ChevronUp, X, Upload } from "lucide-react";
 
-const ID_TYPES    = ["Aadhar","PAN","Others"];
+const ID_TYPES    = ["Aadhar","PAN","Others","Driving License"];
 const VISIT_TYPES = ["Delivery","Pickup","Service","Vendor","Meeting","Contractor","Other"];
 const isValidMobile = v => /^[6-9]\d{9}$/.test(String(v).replace(/\D/g,""));
 
@@ -64,9 +64,10 @@ export default function VehicleForm() {
   const onChange = e => {
     let { name, value } = e.target;
     if (name === "idNumber") {
-      if (form.idType === "Aadhar") value = value.replace(/\D/g,"").slice(0,12);
-      if (form.idType === "PAN")    value = value.replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,10);
-      if (form.idType === "Others") value = value.slice(0,25);
+      if (form.idType === "Aadhar")          value = value.replace(/\D/g,"").slice(0,12);
+      if (form.idType === "PAN")             value = value.replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,10);
+      if (form.idType === "Others")          value = value.slice(0,25);
+      if (form.idType === "Driving License") value = value.replace(/[^A-Za-z0-9-]/g,"").toUpperCase().slice(0,20);
     }
     if (name === "idType") { setForm(p => ({ ...p, idType:value, idNumber:"" })); return; }
     setForm(p => ({ ...p, [name]:value }));
@@ -249,7 +250,7 @@ export default function VehicleForm() {
               <label className="form-label">ID Number</label>
               <input name="idNumber" className="form-input" value={form.idNumber} onChange={onChange}
                 disabled={!form.idType}
-                placeholder={!form.idType?"Select ID type first":form.idType==="Aadhar"?"12 digits":form.idType==="PAN"?"ABCDE1234F":"ID number"}/>
+                placeholder={!form.idType?"Select ID type first":form.idType==="Aadhar"?"12 digits":form.idType==="PAN"?"ABCDE1234F":form.idType==="Driving License"?"e.g. TN0120110012345":"ID number"}/>
             </div>
           </div>
 
