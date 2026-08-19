@@ -23,6 +23,7 @@ import Gates        from "./pages/setup/Gates";
 import Securities   from "./pages/setup/Securities";
 import Designations from "./pages/setup/Designations";
 import Locations    from "./pages/setup/Locations";
+import PatrolPoints from "./pages/setup/PatrolPoints";
 import CompVehicles from "./pages/setup/CompVehicles";
 
 // Users
@@ -98,7 +99,7 @@ function AppRoutes() {
         <Route path="setup/securities"        element={<Securities/>}/>
         <Route path="setup/designations"      element={<Designations/>}/>
         <Route path="setup/locations"         element={<Locations/>}/>           {/* old route — keep for compat */}
-        <Route path="setup/patrol-points"     element={<Locations/>}/>           {/* Patrol Points (renamed) */}
+        <Route path="setup/patrol-points"     element={<PatrolPoints/>}/>        {/* Patrol Points — renamed from Locations */}
         <Route path="setup/cop-vehicles"      element={<CompVehicles/>}/>        {/* Comp. Vehicles — NEW */}
         <Route path="setup/patrol-plan"       element={<ComingSoon title="Patrol Plan"/>}/>{/* Coming soon */}
         <Route path="setup/patrol-schedule"   element={<ComingSoon title="Patrol Schedule"/>}/>{/* Coming soon */}

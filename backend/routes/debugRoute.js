@@ -106,3 +106,21 @@ router.get("/user-menus", async (req, res) => {
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// GET /api/debug/securities?companyid=1
+router.get("/securities", async (req, res) => {
+  const { companyid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Tag",       sql.Bit, 1)
+      .input("companyid", sql.Int, Number(companyid)||1)
+      .execute("PR_GetSecurityData_FrontGrid");
+    res.json({
+      columns:   result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+      first_row: result.recordset?.[0] || null,
+      count:     result.recordset?.length,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
