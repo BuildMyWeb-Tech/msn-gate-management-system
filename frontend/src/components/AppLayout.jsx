@@ -13,18 +13,18 @@ import {
 
 // ── Dynamic icon map — add new icons here as needed ──────────
 const ICON_MAP = {
-  "/dashboard":           LayoutDashboard,
-  "/setup/gates":         Layers,
-  "/setup/securities":    BadgeCheck,
-  "/setup/designations":  Building2,
-  "/setup/patrol-points": MapPin,       // Patrol Points (was Locations)
-  "/setup/cop-vehicles":  Truck,        // Comp. Vehicles
-  "/setup/patrol-plan":   Settings,     // Patrol Plan
-  "/visitors":            Users,
-  "/vehicles":            Car,
-  "/patrol":              Shield,
-  "/reports":             Settings,
-  "/users":               UserCog,
+  "/dashboard":              LayoutDashboard,
+  "/setup/gates":            Layers,
+  "/setup/securities":       BadgeCheck,
+  "/setup/designations":     Building2,
+  "/setup/patrol-points":    MapPin,
+  "/setup/cop-vehicles":     Truck,
+  "/setup/patrol-plan":      Settings,
+  "/setup/patrol-schedule":  Settings,
+  "/visitors":               Users,
+  "/vehicles":               Car,
+  "/patrol":                 Shield,
+  "/users":                  UserCog,
 };
 const DEFAULT_ICON = Settings;
 
@@ -36,20 +36,20 @@ const MOBILE_MENU_ROUTES = {
 };
 
 const PAGE_LABELS = {
-  "/dashboard":            "Dashboard",
-  "/visitors":             "Visitors",
-  "/visitors/new":         "New Visitor",
-  "/vehicles":             "Vehicles",
-  "/vehicles/new":         "New Vehicle",
-  "/patrol":               "Security Patrol",
-  "/setup/gates":          "Gates",
-  "/setup/securities":     "Securities",
-  "/setup/designations":   "Designations",
-  "/setup/patrol-points":  "Patrol Points",
-  "/setup/cop-vehicles":   "Comp. Vehicles",
-  "/setup/patrol-plan":    "Patrol Plan",
-  "/reports":              "Reports",
-  "/users":                "User Management",
+  "/dashboard":              "Dashboard",
+  "/visitors":               "Visitors",
+  "/visitors/new":           "New Visitor",
+  "/vehicles":               "Vehicles",
+  "/vehicles/new":           "New Vehicle",
+  "/patrol":                 "Security Patrol",
+  "/setup/gates":            "Gates",
+  "/setup/securities":       "Securities",
+  "/setup/designations":     "Designations",
+  "/setup/patrol-points":    "Patrol Points",
+  "/setup/cop-vehicles":     "Comp. Vehicles",
+  "/setup/patrol-plan":      "Patrol Plan",
+  "/setup/patrol-schedule":  "Patrol Schedule",
+  "/users":                  "User Management",
 };
 
 export default function AppLayout() {

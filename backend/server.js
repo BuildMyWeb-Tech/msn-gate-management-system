@@ -83,7 +83,8 @@ app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/setup",    setupRoutes);
 app.use("/api/patrol",   patrolRoutes);
 app.use("/api/users",    userRoutes);
-app.use("/api/photos",   photoRoutes);   // ← Cloudinary upload — after body parsing
+app.use("/api/photos",       photoRoutes);      // ← Cloudinary upload — after body parsing
+app.use("/api/comp-vehicles", require("./routes/compVehicleRoutes")); // Comp. Vehicles
 
 // ── Error Handlers ────────────────────────────────────────────
 app.use(notFound);

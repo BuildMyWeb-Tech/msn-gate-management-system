@@ -7,34 +7,36 @@ const MenuContext = createContext(null);
 // ── Dynamic route mapping ─────────────────────────────────────
 // Exact SubMenuName values from PR_Get_UserMenus SP (lowercase for matching)
 // Format: "submenuname from sp" : "route path"
+// Exact SubMenuName values from PR_Get_UserMenus (lowercase for matching)
 const ROUTE_MAP = {
   // Setup — menumuid:1
-  "gate":            "/setup/gates",
-  "securities":      "/setup/securities",
-  "designation":     "/setup/designations",
-  "comp. vehicles":  "/setup/cop-vehicles",   // menudid:7 — Comp. Vehicles
-  "patrol points":   "/setup/patrol-points",  // menudid:4 — was Locations
-  "patrol plan":     "/setup/patrol-plan",    // menudid:12
+  "gate":             "/setup/gates",
+  "securities":       "/setup/securities",
+  "designation":      "/setup/designations",
+  "comp. vehicles":   "/setup/cop-vehicles",    // menudid:7
+  "patrol points":    "/setup/patrol-points",   // menudid:4
+  "patrol plan":      "/setup/patrol-plan",     // menudid:12
+  "patrol schedule":  "/setup/patrol-schedule", // menudid:13
   // Visitors — menumuid:2
-  "visitors":        "/visitors",             // menudid:5
-  "reports":         "/reports",              // menudid:6 (visitors reports)
+  "visitors":         "/visitors",              // menudid:5
   // Vehicles — menumuid:3
-  "vehicles list":   "/vehicles",             // menudid:8
+  "vehicles list":    "/vehicles",              // menudid:8
   // Security Patrol — menumuid:4
-  "patrols":         "/patrol",               // menudid:11
+  "patrols":          "/patrol",                // menudid:11
   // User Management — menumuid:5
-  "users":           "/users",                // menudid:10
+  "users":            "/users",                 // menudid:10
 };
 
-// Display label overrides (SubMenuName → nicer label)
+// Display label overrides
 const LABEL_MAP = {
-  "gate":           "Gates",
-  "designation":    "Designations",
-  "comp. vehicles": "Comp. Vehicles",
-  "patrol points":  "Patrol Points",
-  "patrol plan":    "Patrol Plan",
-  "vehicles list":  "Vehicles",
-  "patrols":        "Security Patrol",
+  "gate":             "Gates",
+  "designation":      "Designations",
+  "comp. vehicles":   "Comp. Vehicles",
+  "patrol points":    "Patrol Points",
+  "patrol plan":      "Patrol Plan",
+  "patrol schedule":  "Patrol Schedule",
+  "vehicles list":    "Vehicles",
+  "patrols":          "Security Patrol",
 };
 
 export { ROUTE_MAP, LABEL_MAP };
