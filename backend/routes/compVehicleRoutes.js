@@ -1,30 +1,53 @@
-const { poolPromise, sql } = require("../database/sqlConnection");
+const express = require("express");
+const router  = express.Router();
+const { gmsProtect } = require("../middleware/authMiddleware");
+const { getCompVehicles, iudCompVehicle } = require("../repositories/compVehicleRepo");
 
-// PR_Get_CompVehicleData_ForFrontgrid @tag int, @companyid int
-async function getCompVehicles({ tag, companyId }) {
-  const pool = await poolPromise;
-  const result = await pool.request()
-    .input("tag",       sql.Int, tag ?? 1)
-    .input("companyid", sql.Int, companyId)
-    .execute("PR_Get_CompVehicleData_ForFrontgrid");
-  return result.recordset || [];
-}
+const getCompanyId = req => Number(req.headers.companyid) || 1;
+const getUserId    = req => Number(req.headers.userid)    || 1;
 
-// PR_IUD_GeneralM — Add/Edit Comp. Vehicle
-// @Mode:1=add, 2=edit | @GTypeMUid:5 (fixed) | @gcode=VehicleNo | @gname=Brand | @gsname=DriverName
-async function iudCompVehicle({ mode, userId, uid, vehicleNo, brand, driverName, companyId }) {
-  const pool = await poolPromise;
-  const result = await pool.request()
-    .input("Mode",      sql.Int,           mode)
-    .input("Userid",    sql.Int,           userId)
-    .input("GTypeMUid", sql.Int,           5)           // always 5
-    .input("gcode",     sql.NVarChar(100), vehicleNo)
-    .input("gname",     sql.NVarChar(200), brand)
-    .input("gsname",    sql.NVarChar(80),  driverName)
-    .input("Uid",       sql.Int,           uid || 0)    // 0 for add
-    .input("companyid", sql.Int,           companyId)
-    .execute("PR_IUD_GeneralM");
-  return result.recordset?.[0] ?? null;
-}
+// GET /api/comp-vehicles
+router.get("/", gmsProtect, async (req, res, next) => {
+  try {
+    const rows = await getCompVehicles({ tag:1, companyId:getCompanyId(req) });
+    const data = rows.map(r => ({
+      uid:        Number(r.uid        ?? r.Uid        ?? 0),
+      vehicleNo:  r.VehicleNo ?? r.vehicleNo ?? r.gcode ?? "",
+      brand:      r.Brand     ?? r.brand     ?? r.gname ?? "",
+      driverName: r.DriverName?? r.driverName?? r.gsname?? "",
+      active:     r.active    ?? r.Active    ?? true,
+      serialNo:   r.serial_no ?? r.SerialNo  ?? 0,
+    }));
+    res.json({ success:true, data });
+  } catch(err) { next(err); }
+});
 
-module.exports = { getCompVehicles, iudCompVehicle };
+// POST /api/comp-vehicles
+router.post("/", gmsProtect, async (req, res, next) => {
+  try {
+    const { vehicleNo, brand, driverName } = req.body;
+    if (!vehicleNo?.trim()) return res.status(400).json({ success:false, message:"Vehicle No is required" });
+    const row = await iudCompVehicle({
+      mode:1, userId:getUserId(req), uid:0,
+      vehicleNo, brand:brand||"", driverName:driverName||"",
+      companyId:getCompanyId(req),
+    });
+    res.json({ success:true, message:row?.ResponseMessage??"Vehicle added" });
+  } catch(err) { next(err); }
+});
+
+// PUT /api/comp-vehicles/:id
+router.put("/:id", gmsProtect, async (req, res, next) => {
+  try {
+    const { vehicleNo, brand, driverName } = req.body;
+    if (!vehicleNo?.trim()) return res.status(400).json({ success:false, message:"Vehicle No is required" });
+    const row = await iudCompVehicle({
+      mode:2, userId:getUserId(req), uid:Number(req.params.id),
+      vehicleNo, brand:brand||"", driverName:driverName||"",
+      companyId:getCompanyId(req),
+    });
+    res.json({ success:true, message:row?.ResponseMessage??"Vehicle updated" });
+  } catch(err) { next(err); }
+});
+
+module.exports = router;

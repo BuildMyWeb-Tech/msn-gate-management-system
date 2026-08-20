@@ -1,12 +1,10 @@
-// routes/patrolRoutes.js
-const express    = require("express");
-const router     = express.Router();
-const ctrl       = require("../controllers/patrolController");
+const express = require("express");
+const router  = express.Router();
 const { gmsProtect } = require("../middleware/authMiddleware");
 
-router.use(gmsProtect);
-
-router.get("/",  ctrl.getLogs);
-router.post("/", ctrl.markCheckpoint);
+// Placeholder — patrol SP details pending from manager
+router.get("/", gmsProtect, (req, res) => {
+  res.json({ success:true, data:[], message:"Patrol module coming soon" });
+});
 
 module.exports = router;
