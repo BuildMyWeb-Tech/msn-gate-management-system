@@ -32,6 +32,12 @@ router.post("/", gmsProtect, async (req, res, next) => {
       vehicleNo, brand:brand||"", driverName:driverName||"",
       companyId:getCompanyId(req),
     });
+    // SP returns ResponseCode 102 for "Already Exists"
+    const code = row?.ResponseCode ?? 100;
+    // SP uses 100 or 101 for success; 102+ for errors
+    if (code > 101) {
+      return res.status(400).json({ success:false, message:row?.ResponseMessage??"Operation failed" });
+    }
     res.json({ success:true, message:row?.ResponseMessage??"Vehicle added" });
   } catch(err) { next(err); }
 });
@@ -46,7 +52,30 @@ router.put("/:id", gmsProtect, async (req, res, next) => {
       vehicleNo, brand:brand||"", driverName:driverName||"",
       companyId:getCompanyId(req),
     });
+    const code = row?.ResponseCode ?? 100;
+    // SP uses 100 or 101 for success; 102+ for errors
+    if (code > 101) {
+      return res.status(400).json({ success:false, message:row?.ResponseMessage??"Operation failed" });
+    }
     res.json({ success:true, message:row?.ResponseMessage??"Vehicle updated" });
+  } catch(err) { next(err); }
+});
+
+
+// DELETE /api/comp-vehicles/:id
+router.delete("/:id", gmsProtect, async (req, res, next) => {
+  try {
+    const row = await iudCompVehicle({
+      mode:3, userId:getUserId(req), uid:Number(req.params.id),
+      vehicleNo:"", brand:"", driverName:"",
+      companyId:getCompanyId(req),
+    });
+    const code = row?.ResponseCode ?? 100;
+    // SP uses 100 or 101 for success; 102+ for errors
+    if (code > 101) {
+      return res.status(400).json({ success:false, message:row?.ResponseMessage??"Delete failed" });
+    }
+    res.json({ success:true, message:row?.ResponseMessage??"Vehicle deleted" });
   } catch(err) { next(err); }
 });
 

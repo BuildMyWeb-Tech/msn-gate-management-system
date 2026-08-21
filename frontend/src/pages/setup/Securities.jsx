@@ -6,21 +6,29 @@ import { Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield } from "l
 
 // Column names from PR_GetSecurityData_FrontGrid — exact case from SP
 function normalise(r) {
+  // photopath comes as array from SP — take first valid non-/Security/ value
+  const rawPhoto = r.PhotoPath ?? r.photopath ?? r.photo ?? "";
+  let photo = "";
+  if (Array.isArray(rawPhoto)) {
+    photo = rawPhoto.find(p => p && !String(p).startsWith("/Security/")) || "";
+  } else {
+    photo = String(rawPhoto||"").startsWith("/Security/") ? "" : String(rawPhoto||"");
+  }
   return {
-    uid:       Number(r.UId      ?? r.uid      ?? r.Uid      ?? 0),
-    scode:     r.SCode   ?? r.scode   ?? r.Scode   ?? "",
-    sname:     r.SName   ?? r.sname   ?? r.Sname   ?? "",
-    gender:    r.Gender  ?? r.gender  ?? "",
-    smobile1:  r.Smobile1?? r.smobile1?? r.SMobile1?? r.SMobile ?? "",
-    smobile2:  r.SMobile2?? r.smobile2?? "",
-    address1:  r.Address1?? r.address1?? "",
-    address2:  r.Address2?? r.address2?? "",
-    address3:  r.Address3?? r.address3?? "",
-    address4:  r.Address4?? r.address4?? "",
-    address5:  r.Address5?? r.address5?? "",
-    spassword: r.SPassword??r.spassword??"",
-    photo:     r.PhotoPath??r.photopath??r.photo??"",
-    active:    r.Active  ?? r.active  ?? true,
+    uid:       Number(r.UId ?? r.uid ?? r.Uid ?? 0),
+    scode:     String(r.scode   ?? r.SCode   ?? ""),
+    sname:     String(r.sname   ?? r.SName   ?? ""),
+    gender:    String(r.gender  ?? r.Gender  ?? ""),
+    smobile1:  String(r.smobile1?? r.Smobile1?? r.SMobile1?? 0) === "0" ? "" : String(r.smobile1??r.Smobile1??r.SMobile1??""),
+    smobile2:  String(r.smobile2?? r.SMobile2?? 0) === "0" ? "" : String(r.smobile2??r.SMobile2??""),
+    address1:  r.Address1 ?? r.address1 ?? "",
+    address2:  r.Address2 ?? r.address2 ?? "",
+    address3:  r.Address3 ?? r.address3 ?? null,
+    address4:  r.Address4 ?? r.address4 ?? null,
+    address5:  r.Address5 ?? r.address5 ?? null,
+    spassword: r.spassword ?? r.SPassword ?? "",
+    photo,
+    active:    Boolean(r.active ?? r.Active ?? true),
   };
 }
 
@@ -267,9 +275,24 @@ export default function Securities() {
                     {cameraOn?(
                       <CameraCapture onCapture={handleCapture} onCancel={()=>setCameraOn(false)}/>
                     ):(
-                      <button className="btn btn-ghost btn-sm" onClick={()=>setCameraOn(true)} disabled={uploading}>
-                        <Camera size={13}/>{photoSrc?"Retake Photo":"Capture Photo"}
-                      </button>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        <button className="btn btn-ghost btn-sm" onClick={()=>setCameraOn(true)} disabled={uploading}>
+                          <Camera size={13}/>{photoSrc?"Retake":"Capture Photo"}
+                        </button>
+                        <label className="btn btn-ghost btn-sm" style={{cursor:"pointer",marginBottom:0}}>
+                          <Upload size={13}/> Upload Photo
+                          <input type="file" accept="image/*" style={{display:"none"}}
+                            onChange={async e=>{
+                              const file=e.target.files?.[0]; if(!file) return;
+                              const reader=new FileReader();
+                              reader.onload=async ev=>{
+                                const b64=ev.target.result.split(",")[1];
+                                await handleCapture(b64);
+                              };
+                              reader.readAsDataURL(file);
+                            }}/>
+                        </label>
+                      </div>
                     )}
                     {photoSrc&&!cameraOn&&(
                       <div style={{fontSize:11,color:"var(--green)",marginTop:6}}>
@@ -302,11 +325,21 @@ export default function Securities() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Mobile 1</label>
-                  <input name="smobile1" className="form-input" value={form.smobile1} onChange={onChange} inputMode="numeric"/>
+                  <input name="smobile1" className={`form-input ${errors.smobile1?"err":""}`}
+                    value={form.smobile1} onChange={e=>{
+                      const v=e.target.value.replace(/\D/g,"").slice(0,15);
+                      setForm(p=>({...p,smobile1:v}));
+                      if(errors.smobile1)setErrors(p=>({...p,smobile1:""}));
+                    }} inputMode="numeric" placeholder="10-digit mobile"/>
+                  {errors.smobile1&&<div className="form-error">{errors.smobile1}</div>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Mobile 2</label>
-                  <input name="smobile2" className="form-input" value={form.smobile2} onChange={onChange} inputMode="numeric"/>
+                  <input name="smobile2" className="form-input"
+                    value={form.smobile2} onChange={e=>{
+                      const v=e.target.value.replace(/\D/g,"").slice(0,15);
+                      setForm(p=>({...p,smobile2:v}));
+                    }} inputMode="numeric" placeholder="Optional"/>
                 </div>
               </div>
               <div className="form-group">

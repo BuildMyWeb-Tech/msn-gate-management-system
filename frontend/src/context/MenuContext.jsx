@@ -16,6 +16,7 @@ const ROUTE_MAP = {
   "comp. vehicles":   "/setup/cop-vehicles",    // menudid:7
   "patrol points":    "/setup/patrol-points",   // menudid:4
   "patrol plan":      "/setup/patrol-plan",     // menudid:12
+  "patrol route":     "/setup/patrol-plan",     // renamed from Patrol Plan
   "patrol schedule":  "/setup/patrol-schedule", // menudid:13
   // Visitors — menumuid:2
   "visitors":         "/visitors",              // menudid:5

@@ -139,7 +139,7 @@ export default function AppLayout() {
           <img src="/msn-logo.png" alt="MSN Infotec"
             style={{ height:36, width:"auto", objectFit:"contain" }}
             onError={e => e.target.style.display="none"}/>
-          <button onClick={handleLogout} title="Sign Out" style={{
+          {/* <button onClick={handleLogout} title="Sign Out" style={{
             background:"none", border:"1px solid var(--border)",
             borderRadius:"var(--radius-xs)", width:32, height:32,
             display:"flex", alignItems:"center", justifyContent:"center",
@@ -149,7 +149,7 @@ export default function AppLayout() {
           onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--red)";e.currentTarget.style.color="var(--red)";e.currentTarget.style.background="var(--red-dim)";}}
           onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.color="var(--text3)";e.currentTarget.style.background="none";}}>
             <LogOut size={15}/>
-          </button>
+          </button> */}
         </div>
 
         {/* Dynamic nav */}
@@ -204,6 +204,21 @@ export default function AppLayout() {
               <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{gateLabel}</span>
             </div>
           )}
+          {/* Sign Out button — top right corner */}
+          <button onClick={handleLogout} title="Sign Out" style={{
+            display:"flex",alignItems:"center",gap:5,
+            padding:"5px 10px",
+            background:"none",border:"1px solid var(--border)",
+            borderRadius:"var(--radius-xs)",
+            cursor:"pointer",color:"var(--text3)",fontSize:12,
+            flexShrink:0,marginLeft:8,
+            transition:"all .15s",
+          }}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--red)";e.currentTarget.style.color="var(--red)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.color="var(--text3)";}}>
+            <LogOut size={14}/>
+            <span className="topbar-logout-label">Sign Out</span>
+          </button>
         </header>
 
         <main className="page-content"><Outlet/></main>

@@ -50,6 +50,9 @@ router.post("/designations", gmsProtect, async (req, res, next) => {
       companyId:getCompanyId(req), userId:getUserId(req),
       mode: uid ? 2 : 1, gTypeMUid:1, uid:uid||0, code, name, shortName,
     });
+    const rc = row?.ResponseCode ?? 100;
+    // SP uses 100 or 101 for success; 102+ for errors (e.g. 102=Already Exists)
+    if (rc > 101) return res.status(400).json({ success:false, message:row?.ResponseMessage??"Operation failed" });
     res.json({ success:true, message:row?.ResponseMessage??"Saved" });
   } catch(err) { next(err); }
 });
