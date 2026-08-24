@@ -4,53 +4,50 @@ import api from "../services/api";
 
 const MenuContext = createContext(null);
 
-// ── Dynamic route mapping ─────────────────────────────────────
-// Exact SubMenuName values from PR_Get_UserMenus SP (lowercase for matching)
-// Format: "submenuname from sp" : "route path"
-// Exact SubMenuName values from PR_Get_UserMenus (lowercase for matching)
-const ROUTE_MAP = {
-  // Setup — menumuid:1
+// Exact SubMenuName values from PR_Get_UserMenus (lowercase)
+export const ROUTE_MAP = {
   "gate":             "/setup/gates",
   "securities":       "/setup/securities",
   "designation":      "/setup/designations",
-  "comp. vehicles":   "/setup/cop-vehicles",    // menudid:7
-  "patrol points":    "/setup/patrol-points",   // menudid:4
-  "patrol plan":      "/setup/patrol-plan",     // menudid:12
-  "patrol route":     "/setup/patrol-plan",     // renamed from Patrol Plan
-  "patrol schedule":  "/setup/patrol-schedule", // menudid:13
-  // Visitors — menumuid:2
-  "visitors":         "/visitors",              // menudid:5
-  // Vehicles — menumuid:3
-  "vehicles list":    "/vehicles",              // menudid:8
-  // Security Patrol — menumuid:4
-  "patrols":          "/patrol",                // menudid:11
-  // User Management — menumuid:5
-  "users":            "/users",                 // menudid:10
+  "comp. vehicles":   "/setup/cop-vehicles",
+  "patrol points":    "/setup/patrol-points",
+  "patrol plan":      "/setup/patrol-plan",
+  "patrol route":     "/setup/patrol-plan",      // renamed alias
+  "patrol schedule":  "/setup/patrol-schedule",
+  "visitors":         "/visitors",
+  "vehicles list":    "/vehicles",
+  "patrols":          "/patrol",
+  "users":            "/users",
 };
 
-// Display label overrides
-const LABEL_MAP = {
-  "gate":             "Gates",
-  "designation":      "Designations",
-  "comp. vehicles":   "Comp. Vehicles",
-  "patrol points":    "Patrol Points",
-  "patrol plan":      "Patrol Plan",
-  "patrol schedule":  "Patrol Schedule",
-  "vehicles list":    "Vehicles",
-  "patrols":          "Security Patrol",
+export const LABEL_MAP = {
+  "gate":            "Gates",
+  "designation":     "Designations",
+  "comp. vehicles":  "Comp. Vehicles",
+  "patrol points":   "Patrol Points",
+  "patrol plan":     "Patrol Plan",
+  "patrol route":    "Patrol Route",
+  "patrol schedule": "Patrol Schedule",
+  "vehicles list":   "Vehicles",
+  "patrols":         "Security Patrol",
 };
 
-export { ROUTE_MAP, LABEL_MAP };
+// Mobile menus from PR_GetApp_UserMenus
+export const MOBILE_MENU_ROUTES = {
+  "visitors":        "/visitors",
+  "vehicles":        "/vehicles",
+  "security patrol": "/patrol",
+};
 
 export function MenuProvider({ children }) {
   const { user, isAuthenticated, isLoading: authLoading, isMobileUser } = useAuth();
   const [menus, setMenus]     = useState([]);
-  const [rawMenus, setRawMenus] = useState([]); // raw SP data
   const [loading, setLoading] = useState(() => {
     try {
       const stored = localStorage.getItem("gms-auth");
       if (stored) {
         const p = JSON.parse(stored);
+        // Mobile security users get menus from login — no fetch needed
         if (p?.loginType === "mobile") return false;
       }
     } catch {}
@@ -59,23 +56,32 @@ export function MenuProvider({ children }) {
 
   useEffect(() => {
     if (authLoading) return;
-    if (isMobileUser) { setLoading(false); return; }
-    if (!isAuthenticated || !user?.userId) { setMenus([]); setRawMenus([]); setLoading(false); return; }
 
+    // Mobile security guard: menus baked into login response
+    if (isMobileUser) {
+      setLoading(false);
+      return;
+    }
+
+    // Not authenticated
+    if (!isAuthenticated || !user?.userId) {
+      setMenus([]);
+      setLoading(false);
+      return;
+    }
+
+    // Desktop user (or admin on mobile using desktop SP)
+    // Fetch sidebar menus via PR_Get_UserMenus
     setLoading(true);
-    // Use PR_Get_UserMenus via /users/sidebar/:userId
     api.get(`/users/sidebar/${user.userId}`)
-      .then(r => {
-        const data = r.data?.data || [];
-        setMenus(data);
-        setRawMenus(data);
-      })
-      .catch(() => { setMenus([]); setRawMenus([]); })
+      .then(r => setMenus(r.data?.data || []))
+      .catch(() => setMenus([]))
       .finally(() => setLoading(false));
+
   }, [authLoading, isAuthenticated, user?.userId, isMobileUser]);
 
   return (
-    <MenuContext.Provider value={{ menus, rawMenus, loading }}>
+    <MenuContext.Provider value={{ menus, loading }}>
       {children}
     </MenuContext.Provider>
   );

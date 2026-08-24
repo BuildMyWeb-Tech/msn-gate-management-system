@@ -3,56 +3,68 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
 import { loginUser, loginSecurity, getGates } from "../services/authService";
-import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor } from "lucide-react";
+import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor, Shield, UserCog } from "lucide-react";
 
 export default function Login() {
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const { isMobile } = useResponsive();
 
-  const [form, setForm]     = useState({
+  // Mobile users can choose: Security Guard or Admin
+  const [mobileRole, setMobileRole] = useState("security"); // "security" | "admin"
+
+  const [form, setForm] = useState({
     username:"", password:"", companyCode:"514670", gateId:"", gateName:"",
   });
-  const [gates, setGates]   = useState([]);
-  const [error, setError]   = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showPw, setShowPw] = useState(false);
+  const [gates, setGates]         = useState([]);
+  const [error, setError]         = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [showPw, setShowPw]       = useState(false);
   const [gatesLoading, setGatesLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) navigate("/dashboard", { replace:true });
   }, [isAuthenticated, navigate]);
 
-  // Load gates for mobile login
+  // Load gates for security mobile login
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isMobile || mobileRole !== "security") return;
     setGatesLoading(true);
     getGates("514670")
       .then(r => { if (r.success && r.data?.length) setGates(r.data); })
       .catch(() => {})
       .finally(() => setGatesLoading(false));
-  }, [isMobile]);
+  }, [isMobile, mobileRole]);
 
   const onChange = e => {
     setError("");
     if (e.target.name === "gateId") {
       const sel = gates.find(g => String(g.id) === e.target.value);
-      setForm(p => ({ ...p, gateId: e.target.value, gateName: sel?.name || "" }));
+      setForm(p => ({ ...p, gateId:e.target.value, gateName:sel?.name||"" }));
     } else {
-      setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+      setForm(p => ({ ...p, [e.target.name]:e.target.value }));
     }
   };
+
+  // Determine which SP to use
+  // Desktop: always desktop SP
+  // Mobile + security role: mobile SP (PR_AppValidate_SecurityLogin)
+  // Mobile + admin role: desktop SP (PR_Validate_UserLogin) — full access on mobile
+  const isMobileSecurity = isMobile && mobileRole === "security";
+  const useMobileSP      = isMobileSecurity;
 
   const onSubmit = async e => {
     e.preventDefault();
     if (!form.username.trim()) return setError("Username is required");
     if (!form.password)        return setError("Password is required");
-    if (isMobile && !form.gateId) return setError("Please select a Gate");
+    if (isMobileSecurity && !form.gateId) return setError("Please select a Gate");
+
     setLoading(true);
     try {
       let res;
-      if (isMobile) {
-        // Mobile: use PR_AppValidate_SecurityLogin
+
+      if (useMobileSP) {
+        // Security guard login
         res = await loginSecurity({
           username:    form.username.trim(),
           password:    form.password,
@@ -61,21 +73,30 @@ export default function Login() {
           gateName:    form.gateName,
         });
       } else {
-        // Desktop: use PR_Validate_UserLogin
+        // Desktop or mobile-admin login — use desktop SP
         res = await loginUser({
           username:    form.username.trim(),
           password:    form.password,
           companyCode: form.companyCode,
         });
       }
+
       if (res.success) {
+        // For mobile admin — override loginType to "mobile" so mobile layout applies
+        // but keep desktop menus (fetched via MenuContext using userId)
+        if (isMobile && mobileRole === "admin") {
+          res.data.loginType  = "desktop"; // use desktop menus from PR_Get_UserMenus
+          res.data.gateId     = null;
+          res.data.gateName   = null;
+          res.data.mobileMenus = null;
+        }
         login(res.data);
         navigate("/dashboard", { replace:true });
       } else {
         setError(res.message || "Invalid credentials");
       }
     } catch(err) {
-      setError(err.response?.data?.message || "Login failed. Please try again.");
+      setError(err.response?.data?.message || "Login failed. Please check your credentials.");
     } finally { setLoading(false); }
   };
 
@@ -84,25 +105,49 @@ export default function Login() {
       <div className="login-card">
         {/* Logo */}
         <div className="login-brand">
-          <img src="/logo.svg" alt="MSN Infotec Gate Management"
+          <img src="/msn-logo.png" alt="MSN Infotec"
             style={{ width:200, height:"auto", marginBottom:6 }}
-            onError={e => { e.target.style.display="none"; }}/>
-          <div style={{
-            display:"flex", alignItems:"center", gap:6,
-            fontSize:11, color:"var(--text3)", marginTop:4,
-          }}>
-            {isMobile
-              ? <><Smartphone size={12}/> Security Guard Login</>
-              : <><Monitor size={12}/> Admin / Staff Login</>}
+            onError={e => e.target.style.display="none"}/>
+          <div style={{ fontSize:11, color:"var(--text3)", marginTop:4, textAlign:"center" }}>
+            Gate Management System
           </div>
         </div>
 
-        <div className="login-section-label">Sign In</div>
+        {/* Mobile role selector */}
+        {isMobile && (
+          <div style={{
+            display:"flex", gap:0, marginBottom:20,
+            border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", overflow:"hidden",
+          }}>
+            <button type="button" onClick={() => { setMobileRole("security"); setError(""); }}
+              style={{
+                flex:1, padding:"10px 8px", border:"none", cursor:"pointer",
+                fontSize:12, fontWeight:600,
+                background: mobileRole==="security" ? "var(--accent)" : "none",
+                color: mobileRole==="security" ? "#000" : "var(--text2)",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                transition:"all .15s",
+              }}>
+              <Shield size={14}/> Security Guard
+            </button>
+            <button type="button" onClick={() => { setMobileRole("admin"); setError(""); }}
+              style={{
+                flex:1, padding:"10px 8px", border:"none", cursor:"pointer",
+                fontSize:12, fontWeight:600,
+                background: mobileRole==="admin" ? "var(--accent)" : "none",
+                color: mobileRole==="admin" ? "#000" : "var(--text2)",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                transition:"all .15s",
+              }}>
+              <UserCog size={14}/> Admin / Staff
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="login-error">
             <AlertCircle size={15} style={{ flexShrink:0 }}/>
-            {error}
+            <span>{error}</span>
           </div>
         )}
 
@@ -112,13 +157,17 @@ export default function Login() {
             <input name="companyCode" className="form-input"
               value={form.companyCode} onChange={onChange}/>
           </div>
+
           <div className="form-group">
-            <label className="form-label">Username <span className="req">*</span></label>
+            <label className="form-label">
+              {isMobileSecurity ? "Security ID" : "Username"} <span className="req">*</span>
+            </label>
             <input name="username" className="form-input"
               value={form.username} onChange={onChange}
-              placeholder={isMobile ? "Security ID (e.g. S001)" : "Username"}
+              placeholder={isMobileSecurity ? "e.g. S001" : "Username"}
               autoCapitalize="none" autoFocus/>
           </div>
+
           <div className="form-group">
             <label className="form-label">Password <span className="req">*</span></label>
             <div className="pw-wrap">
@@ -131,14 +180,13 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Gate selector — mobile only */}
-          {isMobile && (
+          {/* Gate selector — security guard only */}
+          {isMobileSecurity && (
             <div className="form-group">
               <label className="form-label">Gate <span className="req">*</span></label>
               {gatesLoading ? (
                 <div className="form-input" style={{ color:"var(--text3)", display:"flex", alignItems:"center", gap:8 }}>
-                  <span className="spin-sm" style={{ borderColor:"var(--border2)", borderTopColor:"var(--accent)" }}/>
-                  Loading gates...
+                  <span className="spin-sm"/>Loading gates...
                 </div>
               ) : (
                 <select name="gateId" className="form-input" value={form.gateId} onChange={onChange}>
@@ -151,20 +199,19 @@ export default function Login() {
 
           <button type="submit" className="login-submit" disabled={loading}>
             {loading
-              ? <><span className="spin-sm" style={{ borderColor:"rgba(0,0,0,0.25)", borderTopColor:"#000" }}/>Signing in...</>
-              : <><LogIn size={16}/>{isMobile ? "Sign In as Security" : "Sign In"}</>}
+              ? <><span className="spin-sm"/>Signing in...</>
+              : <><LogIn size={16}/>
+                {!isMobile ? "Sign In" : mobileRole==="security" ? "Sign In as Security" : "Sign In as Admin"}
+                </>}
           </button>
         </form>
 
-        {/* Device indicator */}
-        <div style={{
-          marginTop:16, textAlign:"center",
-          fontSize:11, color:"var(--text3)",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:4,
-        }}>
-          {isMobile
-            ? <><Smartphone size={11}/> Mobile access — Visitor & Vehicle entry</>
-            : <><Monitor size={11}/> Desktop access — Full management console</>}
+        <div style={{ marginTop:12, textAlign:"center", fontSize:11, color:"var(--text3)", display:"flex", alignItems:"center", justifyContent:"center", gap:4 }}>
+          {!isMobile
+            ? <><Monitor size={11}/> Desktop — Full management console</>
+            : mobileRole==="security"
+              ? <><Shield size={11}/> Security Guard — Visitor &amp; Vehicle entry</>
+              : <><UserCog size={11}/> Admin — Full access on mobile</>}
         </div>
       </div>
     </div>
