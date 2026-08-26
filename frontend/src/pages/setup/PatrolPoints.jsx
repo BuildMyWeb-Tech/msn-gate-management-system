@@ -1,19 +1,73 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../../services/api";
 import Toast from "../../components/Toast";
-import { MapPin, RefreshCw, Plus, X, Save, Pencil, Trash2 } from "lucide-react";
+import { MapPin, RefreshCw, Plus, X, Save, Pencil, Navigation, Loader } from "lucide-react";
 
-const EMPTY = { uid:0, code:"", name:"", gpsId1:"", gpsId2:"", active:true };
+const EMPTY = { uid:0, code:"", name:"", gpsId1:"", gpsId2:"" };
 
 function normalise(r) {
   return {
     uid:    Number(r.uid    ?? r.Uid    ?? r.UId    ?? 0),
-    code:   r.gcode ?? r.GCode ?? r.code  ?? r.Code  ?? "",
-    name:   r.gname ?? r.GName ?? r.name  ?? r.Name  ?? "",
+    code:   r.gcode ?? r.GCode ?? r.code  ?? "",
+    name:   r.gname ?? r.GName ?? r.name  ?? "",
     gpsId1: r.gpsid1?? r.GPSId1?? r.gpsId1?? "",
     gpsId2: r.gpsid2?? r.GPSId2?? r.gpsId2?? "",
     active: r.active ?? r.Active ?? true,
   };
+}
+
+// ── GPS capture button ────────────────────────────────────────
+function GPSButton({ onCapture }) {
+  const [getting, setGetting] = useState(false);
+  const [error, setError]     = useState("");
+
+  const capture = () => {
+    if (!navigator.geolocation) {
+      setError("GPS not supported on this device");
+      return;
+    }
+    setGetting(true);
+    setError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        onCapture(lat, lng);
+        setGetting(false);
+      },
+      (err) => {
+        setGetting(false);
+        if (err.code === 1) setError("Location permission denied — enable in browser settings");
+        else if (err.code === 2) setError("Location unavailable — try outdoors");
+        else setError("GPS timeout — try again");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  return (
+    <div>
+      <button type="button" onClick={capture} disabled={getting}
+        style={{
+          display:"flex", alignItems:"center", gap:6,
+          padding:"7px 12px",
+          background:"var(--accent-dim)",
+          border:"1px solid rgba(245,158,11,0.4)",
+          borderRadius:"var(--radius-sm)",
+          color:"var(--accent)", fontSize:12, fontWeight:600,
+          cursor:getting?"wait":"pointer",
+          transition:"all .15s",
+          whiteSpace:"nowrap",
+        }}
+        onMouseEnter={e=>{if(!getting)e.currentTarget.style.background="rgba(245,158,11,0.2)";}}
+        onMouseLeave={e=>{e.currentTarget.style.background="var(--accent-dim)";}}>
+        {getting
+          ? <><Loader size={13} style={{animation:"spin 1s linear infinite"}}/> Getting GPS...</>
+          : <><Navigation size={13}/> Use My Location</>}
+      </button>
+      {error && <div style={{fontSize:11,color:"var(--red)",marginTop:4}}>{error}</div>}
+    </div>
+  );
 }
 
 export default function PatrolPoints() {
@@ -30,7 +84,7 @@ export default function PatrolPoints() {
     try {
       const r = await api.get("/setup/patrol-points");
       setRows((r.data?.data || []).map(normalise));
-    } catch { setToast({type:"error",msg:"Failed to load patrol points"}); }
+    } catch { setToast({type:"error", msg:"Failed to load patrol points"}); }
     finally { setLoading(false); }
   }, []);
 
@@ -44,16 +98,28 @@ export default function PatrolPoints() {
     if(errors[e.target.name]) setErrors(p=>({...p,[e.target.name]:""}));
   };
 
+  // Called when GPS button captures coordinates
+  const onGPSCapture = (lat, lng) => {
+    setForm(p => ({ ...p, gpsId1: lat, gpsId2: lng }));
+    setToast({ type:"success", msg:`Location captured: ${lat}, ${lng}` });
+  };
+
   const onSave = async () => {
     if (!form.name?.trim()) { setErrors({name:"Name is required"}); return; }
     setSaving(true);
     try {
-      const body = { code:form.code, name:form.name, gpsId1:form.gpsId1, gpsId2:form.gpsId2, uid:form.uid||0 };
+      const body = {
+        code:   form.code,
+        name:   form.name,
+        gpsId1: form.gpsId1,
+        gpsId2: form.gpsId2,
+        uid:    form.uid || 0,
+      };
       if (form.uid) await api.put(`/setup/patrol-points/${form.uid}`, body);
       else          await api.post("/setup/patrol-points", body);
-      setToast({type:"success",msg:form.uid?"Updated":"Added"});
+      setToast({type:"success", msg:form.uid?"Updated":"Added"});
       setShowForm(false); load();
-    } catch(err){ setToast({type:"error",msg:err.response?.data?.message||"Failed"}); }
+    } catch(err) { setToast({type:"error", msg:err.response?.data?.message||"Failed"}); }
     finally { setSaving(false); }
   };
 
@@ -61,19 +127,27 @@ export default function PatrolPoints() {
     <div>
       <Toast toast={toast} onClose={()=>setToast(null)}/>
 
-      {showForm&&(
+      {/* Add/Edit Modal */}
+      {showForm && (
         <>
           <div onClick={closeForm} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(3px)",zIndex:400}}/>
-          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
-            zIndex:401,width:"min(440px,92vw)",background:"var(--surface)",
-            borderRadius:"var(--radius)",border:"1px solid var(--border)",
-            boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}}>
-            <div style={{padding:"16px 20px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{
+            position:"fixed", top:"50%", left:"50%",
+            transform:"translate(-50%,-50%)",
+            zIndex:401, width:"min(460px,92vw)",
+            background:"var(--surface)",
+            borderRadius:"var(--radius)",
+            border:"1px solid var(--border)",
+            boxShadow:"0 24px 64px rgba(0,0,0,0.4)",
+            maxHeight:"90dvh", overflowY:"auto",
+          }}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:"var(--surface)",zIndex:1}}>
               <div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}>
                 <MapPin size={16} style={{color:"var(--accent)"}}/>{form.uid?"Edit":"Add"} Patrol Point
               </div>
               <button onClick={closeForm} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text2)"}}><X size={18}/></button>
             </div>
+
             <div style={{padding:20}}>
               <div className="form-row">
                 <div className="form-group">
@@ -83,22 +157,72 @@ export default function PatrolPoints() {
                 <div className="form-group">
                   <label className="form-label">Name <span className="req">*</span></label>
                   <input name="name" className={`form-input ${errors.name?"err":""}`}
-                    value={form.name} onChange={onChange} placeholder="Patrol point name" autoFocus/>
+                    value={form.name} onChange={onChange} placeholder="e.g. Main Entrance" autoFocus/>
                   {errors.name&&<div className="form-error">{errors.name}</div>}
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">GPS ID 1</label>
-                  <input name="gpsId1" className="form-input" value={form.gpsId1} onChange={onChange} placeholder="Latitude"/>
+
+              {/* GPS Capture */}
+              <div style={{
+                padding:14, marginBottom:16,
+                background:"var(--surface2)",
+                border:"1px solid var(--border)",
+                borderRadius:"var(--radius-sm)",
+              }}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+                    <Navigation size={14} style={{color:"var(--accent)"}}/>GPS Coordinates
+                  </div>
+                  {/* One-tap GPS capture */}
+                  <GPSButton onCapture={onGPSCapture}/>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">GPS ID 2</label>
-                  <input name="gpsId2" className="form-input" value={form.gpsId2} onChange={onChange} placeholder="Longitude"/>
+
+                {/* Show captured coords preview */}
+                {(form.gpsId1 || form.gpsId2) && (
+                  <div style={{
+                    padding:"8px 10px", marginBottom:12,
+                    background:"rgba(245,158,11,0.08)",
+                    border:"1px solid rgba(245,158,11,0.2)",
+                    borderRadius:"var(--radius-xs)",
+                    fontSize:12, color:"var(--accent)",
+                    display:"flex", alignItems:"center", gap:6,
+                  }}>
+                    <MapPin size={12}/>
+                    <span>{form.gpsId1 && `Lat: ${form.gpsId1}`}{form.gpsId1 && form.gpsId2 && "  |  "}{form.gpsId2 && `Lng: ${form.gpsId2}`}</span>
+                    {/* Google Maps link */}
+                    {form.gpsId1 && form.gpsId2 && (
+                      <a href={`https://www.google.com/maps?q=${form.gpsId1},${form.gpsId2}`}
+                        target="_blank" rel="noreferrer"
+                        style={{marginLeft:"auto",fontSize:11,color:"var(--accent)",textDecoration:"underline"}}>
+                        View on Map ↗
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="form-label" style={{fontSize:11}}>GPS ID 1 (Latitude)</label>
+                    <input name="gpsId1" className="form-input" value={form.gpsId1}
+                      onChange={onChange} placeholder="e.g. 11.004556"
+                      inputMode="decimal"/>
+                  </div>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="form-label" style={{fontSize:11}}>GPS ID 2 (Longitude)</label>
+                    <input name="gpsId2" className="form-input" value={form.gpsId2}
+                      onChange={onChange} placeholder="e.g. 76.961632"
+                      inputMode="decimal"/>
+                  </div>
+                </div>
+
+                <div style={{fontSize:11,color:"var(--text3)",marginTop:10,lineHeight:1.5}}>
+                  Tap <strong>Use My Location</strong> to auto-fill coordinates from device GPS,
+                  or enter manually. Works best outdoors with good signal.
                 </div>
               </div>
             </div>
-            <div style={{padding:"12px 20px",borderTop:"1px solid var(--border)",display:"flex",gap:8,justifyContent:"flex-end"}}>
+
+            <div style={{padding:"12px 20px",borderTop:"1px solid var(--border)",display:"flex",gap:8,justifyContent:"flex-end",position:"sticky",bottom:0,background:"var(--surface)"}}>
               <button className="btn btn-ghost" onClick={closeForm}>Cancel</button>
               <button className="btn btn-primary" onClick={onSave} disabled={saving}>
                 {saving?<><span className="spin-sm"/>Saving...</>:<><Save size={14}/>Save</>}
@@ -108,6 +232,7 @@ export default function PatrolPoints() {
         </>
       )}
 
+      {/* Page header */}
       <div className="page-hdr">
         <div className="page-hdr-left">
           <h1>Patrol Points</h1>
@@ -124,6 +249,7 @@ export default function PatrolPoints() {
         <div className="empty-state">
           <div className="empty-icon"><MapPin size={22}/></div>
           <h3>No patrol points</h3>
+          <p>Add patrol points with GPS coordinates for tracking</p>
           <button className="btn btn-primary" style={{marginTop:8}} onClick={openAdd}><Plus size={14}/> Add Point</button>
         </div>
       ):(
@@ -133,9 +259,9 @@ export default function PatrolPoints() {
               <th style={{width:50}}>#</th>
               <th>Code</th>
               <th>Name</th>
-              <th>GPS ID 1</th>
-              <th>GPS ID 2</th>
-              <th>Status</th>
+              <th>Latitude</th>
+              <th>Longitude</th>
+              <th>Map</th>
               <th style={{width:80}}>Actions</th>
             </tr></thead>
             <tbody>
@@ -146,9 +272,17 @@ export default function PatrolPoints() {
                   <td className="td-muted" style={{textAlign:"center"}}>{i+1}</td>
                   <td className="td-muted">{row.code||"—"}</td>
                   <td style={{fontWeight:600}}>{row.name||"—"}</td>
-                  <td className="td-muted">{row.gpsId1||"—"}</td>
-                  <td className="td-muted">{row.gpsId2||"—"}</td>
-                  <td>{row.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</td>
+                  <td className="td-muted" style={{fontFamily:"monospace",fontSize:12}}>{row.gpsId1||"—"}</td>
+                  <td className="td-muted" style={{fontFamily:"monospace",fontSize:12}}>{row.gpsId2||"—"}</td>
+                  <td>
+                    {row.gpsId1 && row.gpsId2 ? (
+                      <a href={`https://www.google.com/maps?q=${row.gpsId1},${row.gpsId2}`}
+                        target="_blank" rel="noreferrer"
+                        style={{fontSize:11,color:"var(--accent)",textDecoration:"none",display:"flex",alignItems:"center",gap:3}}>
+                        <MapPin size={11}/> View
+                      </a>
+                    ) : <span className="td-muted">—</span>}
+                  </td>
                   <td>
                     <button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}>
                       <Pencil size={11}/> Edit
