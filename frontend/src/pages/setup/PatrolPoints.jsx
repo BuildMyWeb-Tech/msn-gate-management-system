@@ -261,8 +261,7 @@ export default function PatrolPoints() {
               <th>Name</th>
               <th>Latitude</th>
               <th>Longitude</th>
-              <th>Map</th>
-              <th style={{width:80}}>Actions</th>
+              <th style={{width:120}}>Actions</th>
             </tr></thead>
             <tbody>
               {rows.map((row,i)=>(
@@ -275,18 +274,18 @@ export default function PatrolPoints() {
                   <td className="td-muted" style={{fontFamily:"monospace",fontSize:12}}>{row.gpsId1||"—"}</td>
                   <td className="td-muted" style={{fontFamily:"monospace",fontSize:12}}>{row.gpsId2||"—"}</td>
                   <td>
-                    {row.gpsId1 && row.gpsId2 ? (
-                      <a href={`https://www.google.com/maps?q=${row.gpsId1},${row.gpsId2}`}
-                        target="_blank" rel="noreferrer"
-                        style={{fontSize:11,color:"var(--accent)",textDecoration:"none",display:"flex",alignItems:"center",gap:3}}>
-                        <MapPin size={11}/> View
-                      </a>
-                    ) : <span className="td-muted">—</span>}
-                  </td>
-                  <td>
-                    <button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}>
-                      <Pencil size={11}/> Edit
-                    </button>
+                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}>
+                        <Pencil size={11}/> Edit
+                      </button>
+                      {row.gpsId1 && row.gpsId2 && (
+                        <a href={`https://www.google.com/maps?q=${row.gpsId1},${row.gpsId2}`}
+                          target="_blank" rel="noreferrer"
+                          style={{fontSize:11,color:"var(--accent)",textDecoration:"none",display:"flex",alignItems:"center",gap:3}}>
+                          <MapPin size={11}/> Map
+                        </a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
