@@ -19,7 +19,8 @@ function normaliseDetail(r) {
     uid:              Number(r.uid ?? r.Uid ?? r.UId ?? 0),
     planOrder:        Number(r.planorder ?? r.PlanOrder ?? 0),
     patrolPointUid:   Number(r.patrolpointuid ?? r.PatrolPointUid ?? 0),
-    patrolPointName:  r.PatrolPointName ?? r.patrolpointname ?? r.gname ?? "",
+    // SP PR_Get_PatrolPlanList returns column "patrolpoints" (lowercase)
+    patrolPointName:  r.patrolpoints ?? r.PatrolPoints ?? r.PatrolPointName ?? r.patrolpointname ?? "",
     leadTime:         Number(r.leadtime ?? r.LeadTime ?? 0),
     duration:         r.Duration ?? r.duration ?? "",
   };
@@ -29,7 +30,8 @@ function normaliseDetail(r) {
 function normalisePoint(r) {
   return {
     uid:  Number(r.uid ?? r.Uid ?? 0),
-    name: r.gname ?? r.GName ?? r.name ?? r.PatrolPointName ?? "",
+    // SP PR_Get_PatrolPointsData_ForPatrolPlan returns column "PatrolPoints"
+    name: r.PatrolPoints ?? r.patrolpoints ?? r.gname ?? r.GName ?? r.name ?? "",
     code: r.gcode ?? r.GCode ?? r.code ?? "",
   };
 }
