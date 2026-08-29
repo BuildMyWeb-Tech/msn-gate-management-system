@@ -99,16 +99,28 @@ router.post("/plans/:uid/detail", gmsProtect, async (req, res, next) => {
 // DELETE /api/patrol/plans/:uid/detail/:detailUid
 router.delete("/plans/:uid/detail/:detailUid", gmsProtect, async (req, res, next) => {
   try {
+    console.log("[deleteDetail] planUid:", req.params.uid, "detailUid:", req.params.detailUid);
     const row = await repo.idPatrolPlanDetail({
       mode:2, userId:getUserId(req),
       planMUid:       Number(req.params.uid),
       patrolPointUid: 0,
       planOrder:      0,
       leadTime:       0,
-      uid:Number(req.params.detailUid), companyId:getCompanyId(req),
+      uid:            Number(req.params.detailUid),
+      companyId:      getCompanyId(req),
     });
-    res.json({ success:true, message:row?.ResponseMessage||"Deleted" });
-  } catch(err) { next(err); }
+    console.log("[deleteDetail] SP response:", JSON.stringify(row));
+    // SP may return null or ResponseCode 101 on successful delete
+    const rc  = row?.ResponseCode ?? 100;
+    const msg = row?.ResponseMessage || "";
+    if (rc > 101 && !msg.toLowerCase().includes("success") && !msg.toLowerCase().includes("deleted")) {
+      return res.status(400).json({ success:false, message:msg||"Delete failed" });
+    }
+    res.json({ success:true, message:msg || "Deleted successfully" });
+  } catch(err) {
+    console.error("[deleteDetail] error:", err.message);
+    next(err);
+  }
 });
 
 // Patrol guard attendance (placeholder)

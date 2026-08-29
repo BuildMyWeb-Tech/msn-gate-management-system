@@ -122,3 +122,29 @@ router.get("/app-login-check", async (req, res) => {
 });
 
 module.exports = router;
+
+// Test patrol plan detail delete
+// GET /api/debug/patrol-delete?planuid=2&detailuid=1&companyid=1
+router.get("/patrol-delete", async (req, res) => {
+  const { planuid, detailuid, companyid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Mode",           sql.Int,    2)
+      .input("Userid",         sql.Int,    1)
+      .input("PlanMUid",       sql.BigInt, Number(planuid)||0)
+      .input("patrolpointuid", sql.BigInt, 0)
+      .input("planorder",      sql.Int,    0)
+      .input("leadtime",       sql.Int,    0)
+      .input("Uid",            sql.Int,    Number(detailuid)||0)
+      .input("companyid",      sql.Int,    Number(companyid)||1)
+      .execute("PR_ID_PatrolPlanD");
+    res.json({
+      recordset:  result.recordset,
+      recordsets: result.recordsets?.map(rs => rs),
+      rowsAffected: result.rowsAffected,
+      first: result.recordset?.[0] || result.recordsets?.[0]?.[0] || null,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});

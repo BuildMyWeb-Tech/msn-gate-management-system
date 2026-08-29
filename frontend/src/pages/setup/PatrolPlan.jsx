@@ -133,7 +133,20 @@ function PlanForm({ plan, onClose, onSaved }) {
   useEffect(() => {
     if (!plan?.uid) return;
     api.get(`/patrol/plans/${plan.uid}/list`)
-      .then(r => setDetails((r.data?.data||[]).map(normaliseDetail)))
+      .then(r => {
+        const raw = r.data?.data || [];
+        // Filter out "No Data Found" rows — SP returns ResponseCode:101 with empty data
+        const valid = raw.filter(row => {
+          const code = row.ResponseCode ?? 100;
+          const msg  = row.ResponseMessage ?? "";
+          const hasData = row.patrolpointuid || row.PatrolPointUid || row.patrolpoints || row.PatrolPoints;
+          // Skip rows that are just "No Data Found" placeholders
+          if (msg.toLowerCase().includes("no data") || msg.toLowerCase().includes("not found")) return false;
+          if (!hasData && code !== 100) return false;
+          return true;
+        });
+        setDetails(valid.map(normaliseDetail));
+      })
       .catch(() => {});
   }, [plan?.uid]);
 
