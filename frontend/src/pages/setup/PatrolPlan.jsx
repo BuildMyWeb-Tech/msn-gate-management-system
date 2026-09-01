@@ -26,6 +26,23 @@ function normaliseDetail(r) {
   };
 }
 
+// ── Filter + normalise detail rows (handles "No Data Found" SP response) ───
+function filterAndNormalise(raw) {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw
+    .filter(row => {
+      const msg  = String(row.ResponseMessage ?? "").toLowerCase();
+      const code = row.ResponseCode ?? 100;
+      // Skip "No Data Found" placeholder rows
+      if (msg.includes("no data") || msg.includes("not found")) return false;
+      // Skip rows with no patrol point uid (empty/invalid rows)
+      const hasPoint = row.patrolpointuid || row.PatrolPointUid || row.patrolpoints || row.PatrolPoints;
+      if (!hasPoint && code !== 100) return false;
+      return true;
+    })
+    .map(normaliseDetail);
+}
+
 // ── Normalise combo point ────────────────────────────────────
 function normalisePoint(r) {
   return {
@@ -133,20 +150,7 @@ function PlanForm({ plan, onClose, onSaved }) {
   useEffect(() => {
     if (!plan?.uid) return;
     api.get(`/patrol/plans/${plan.uid}/list`)
-      .then(r => {
-        const raw = r.data?.data || [];
-        // Filter out "No Data Found" rows — SP returns ResponseCode:101 with empty data
-        const valid = raw.filter(row => {
-          const code = row.ResponseCode ?? 100;
-          const msg  = row.ResponseMessage ?? "";
-          const hasData = row.patrolpointuid || row.PatrolPointUid || row.patrolpoints || row.PatrolPoints;
-          // Skip rows that are just "No Data Found" placeholders
-          if (msg.toLowerCase().includes("no data") || msg.toLowerCase().includes("not found")) return false;
-          if (!hasData && code !== 100) return false;
-          return true;
-        });
-        setDetails(valid.map(normaliseDetail));
-      })
+      .then(r => setDetails(filterAndNormalise(r.data?.data)))
       .catch(() => {});
   }, [plan?.uid]);
 
@@ -181,17 +185,27 @@ function PlanForm({ plan, onClose, onSaved }) {
     }
     try {
       const r = await api.post(`/patrol/plans/${uid}/detail`, {
-        patrolPointUid: row.patrolPointUid,
-        planOrder:      row.planOrder,
-        leadTime:       row.leadTime,
+        patrolPointUid: Number(row.patrolPointUid),
+        planOrder:      Number(row.planOrder) || 1,
+        leadTime:       Number(row.leadTime)  || 0,
       });
-      if (!r.data?.success) { setToast({type:"error",msg:r.data?.message||"Failed"}); return; }
-      // Reload details
-      const d = await api.get(`/patrol/plans/${uid}/list`);
-      setDetails((d.data?.data||[]).map(normaliseDetail));
+      // Check SP response — accept 100 or 101 as success
+      const rc  = r.data?.data?.ResponseCode ?? (r.data?.success ? 100 : 102);
+      const msg = r.data?.message || r.data?.data?.ResponseMessage || "";
+      if (r.data?.success === false || rc > 101) {
+        setToast({type:"error", msg:msg||"Failed to add patrol point"}); return;
+      }
+      // Reload details safely
+      try {
+        const d = await api.get(`/patrol/plans/${uid}/list`);
+        setDetails(filterAndNormalise(d.data?.data));
+      } catch { /* reload failed — keep existing rows */ }
       setAddingRow(false);
-      setToast({type:"success",msg:"Row added"});
-    } catch(err) { setToast({type:"error",msg:err.response?.data?.message||"Failed"}); }
+      setToast({type:"success", msg:"Patrol point added"});
+    } catch(err) {
+      console.error("[handleAddDetail]", err);
+      setToast({type:"error", msg:err.response?.data?.message||"Failed"});
+    }
   };
 
   const handleUpdateDetail = async (row) => {
@@ -207,7 +221,7 @@ function PlanForm({ plan, onClose, onSaved }) {
       });
       if (!r.data?.success) { setToast({type:"error",msg:r.data?.message||"Failed"}); return; }
       const d = await api.get(`/patrol/plans/${planUid}/list`);
-      setDetails((d.data?.data||[]).map(normaliseDetail));
+      setDetails(filterAndNormalise(d.data?.data));
       setToast({type:"success",msg:"Row updated"});
     } catch(err) { setToast({type:"error",msg:err.response?.data?.message||"Failed"}); }
   };
