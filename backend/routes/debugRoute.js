@@ -148,3 +148,27 @@ router.get("/patrol-delete", async (req, res) => {
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// Test patrol plan add - check what uid is returned
+// GET /api/debug/patrol-plan-add?planname=TestPlan&companyid=1&userid=1
+router.get("/patrol-plan-add", async (req, res) => {
+  const { planname, companyid, userid } = req.query;
+  const { poolPromise, sql } = require("../database/sqlConnection");
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Mode",      sql.Int,           1)
+      .input("Userid",    sql.Int,           Number(userid)||1)
+      .input("PlanName",  sql.NVarChar(100), String(planname||"Test"))
+      .input("Uid",       sql.Int,           0)
+      .input("companyid", sql.Int,           Number(companyid)||1)
+      .execute("PR_IUD_PatrolPlan");
+    res.json({
+      recordset:    result.recordset,
+      recordsets:   result.recordsets,
+      rowsAffected: result.rowsAffected,
+      first:        result.recordset?.[0] || result.recordsets?.[0]?.[0] || null,
+      allColumns:   result.recordset?.[0] ? Object.keys(result.recordset[0]) : [],
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});

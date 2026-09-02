@@ -7,17 +7,21 @@ const config = {
   port:     Number(process.env.DB_PORT) || 19649,
   database: process.env.DB_NAME     || "Gate_Mgmt",
   options: {
-    encrypt:              false,
+    encrypt:                false,
     trustServerCertificate: true,
-    enableArithAbort:     true,
-    connectTimeout:       30000,  // 30s connect timeout
-    requestTimeout:       60000,  // 60s query timeout
+    enableArithAbort:       true,
+    connectTimeout:         60000,
+    requestTimeout:         120000,
   },
   pool: {
-    max:              10,   // max connections
-    min:              2,    // keep 2 warm
-    idleTimeoutMillis: 30000,  // close idle after 30s
-    acquireTimeoutMillis: 30000, // wait up to 30s for connection
+    max:                       15,
+    min:                       2,
+    idleTimeoutMillis:         60000,
+    acquireTimeoutMillis:      60000,
+    createTimeoutMillis:       30000,
+    destroyTimeoutMillis:      5000,
+    reapIntervalMillis:        1000,
+    createRetryIntervalMillis: 200,
   },
 };
 
@@ -25,6 +29,10 @@ const poolPromise = new sql.ConnectionPool(config)
   .connect()
   .then(pool => {
     console.log("✅ MS SQL Server connected →", config.database, "DB");
+    // Keepalive ping every 4 minutes to prevent timeout
+    setInterval(() => {
+      pool.request().query("SELECT 1").catch(() => {});
+    }, 4 * 60 * 1000);
     return pool;
   })
   .catch(err => {

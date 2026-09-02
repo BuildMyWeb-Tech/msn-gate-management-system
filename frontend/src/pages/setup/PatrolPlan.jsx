@@ -64,10 +64,18 @@ function DetailRow({ row, index, points, onSave, onDelete, isNew }) {
   const handleSave = async () => {
     if (!edit.patrolPointUid) return;
     setSaving(true);
-    await onSave({ ...edit, tempIndex: index });
-    setSaving(false);
-    setEdit(null);
+    try {
+      const success = await onSave({ ...edit, tempIndex: index });
+      // Only close edit mode if save was successful
+      if (success !== false) {
+        setEdit(null);
+      }
+    } catch { /* error handled in onSave */ }
+    finally { setSaving(false); }
   };
+
+  // Safety guard — should never happen but prevents crash
+  if (!edit && !row) return null;
 
   if (edit) {
     return (
@@ -105,6 +113,9 @@ function DetailRow({ row, index, points, onSave, onDelete, isNew }) {
       </tr>
     );
   }
+
+  // Display view — only shown when row exists and not editing
+  if (!row) return null; // safety — should never reach here with null row
 
   return (
     <tr onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
@@ -166,8 +177,16 @@ function PlanForm({ plan, onClose, onSaved }) {
       } else {
         const r = await api.post("/patrol/plans", { planName });
         if (!r.data?.success) { setToast({type:"error",msg:r.data?.message||"Failed"}); return false; }
-        const newUid = r.data?.uid || r.data?.data?.uid || r.data?.data?.Uid;
-        if (!newUid) { setToast({type:"error",msg:"Plan saved but could not get UID for adding details"}); return false; }
+        // SP returns "Uid" (capital U) in recordset
+        const newUid = r.data?.uid
+          || r.data?.data?.Uid
+          || r.data?.data?.uid
+          || r.data?.Uid;
+        console.log("[savePlanHeader] SP response:", r.data, "newUid:", newUid);
+        if (!newUid) {
+          setToast({type:"error", msg:"Plan saved but UID not returned — refresh and edit the plan to add points"});
+          return false;
+        }
         setPlanUid(newUid);
         return newUid;
       }
@@ -193,7 +212,8 @@ function PlanForm({ plan, onClose, onSaved }) {
       const rc  = r.data?.data?.ResponseCode ?? (r.data?.success ? 100 : 102);
       const msg = r.data?.message || r.data?.data?.ResponseMessage || "";
       if (r.data?.success === false || rc > 101) {
-        setToast({type:"error", msg:msg||"Failed to add patrol point"}); return;
+        setToast({type:"error", msg:msg||"Failed to add patrol point"});
+        return false; // signal to DetailRow to keep edit mode open
       }
       // Reload details safely
       try {
@@ -205,6 +225,7 @@ function PlanForm({ plan, onClose, onSaved }) {
     } catch(err) {
       console.error("[handleAddDetail]", err);
       setToast({type:"error", msg:err.response?.data?.message||"Failed"});
+      return false; // keep edit mode open
     }
   };
 
@@ -223,7 +244,10 @@ function PlanForm({ plan, onClose, onSaved }) {
       const d = await api.get(`/patrol/plans/${planUid}/list`);
       setDetails(filterAndNormalise(d.data?.data));
       setToast({type:"success",msg:"Row updated"});
-    } catch(err) { setToast({type:"error",msg:err.response?.data?.message||"Failed"}); }
+    } catch(err) {
+      setToast({type:"error",msg:err.response?.data?.message||"Failed"});
+      return false;
+    }
   };
 
   const handleDeleteDetail = async (detailUid) => {
@@ -236,6 +260,11 @@ function PlanForm({ plan, onClose, onSaved }) {
   };
 
   const handleSaveAndClose = async () => {
+    // If there's an open inline row being added, warn user to save or cancel it first
+    if (addingRow) {
+      setToast({type:"error", msg:"Please save or cancel the open patrol point row first"});
+      return;
+    }
     const result = await savePlanHeader();
     if (result) { onSaved(); onClose(); }
   };

@@ -47,7 +47,10 @@ router.post("/plans", gmsProtect, async (req, res, next) => {
     });
     const rc = row?.ResponseCode ?? 100;
     if (rc > 101) return res.status(400).json({ success:false, message:row?.ResponseMessage||"Failed" });
-    res.json({ success:true, message:row?.ResponseMessage||"Saved", uid: row?.uid ?? row?.Uid ?? null, data:row });
+    // SP returns "Uid" (capital U) — pass it through explicitly
+    const newUid = row?.Uid ?? row?.uid ?? null;
+    console.log("[createPlan] SP row:", JSON.stringify(row), "newUid:", newUid);
+    res.json({ success:true, message:row?.ResponseMessage||"Saved", uid:newUid, Uid:newUid, data:row });
   } catch(err) { next(err); }
 });
 
