@@ -1,11 +1,12 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Users, Car } from "lucide-react";
+import { Home, Users, Car, Shield } from "lucide-react";
 
 const NAV_ITEMS = [
-  { path: "/dashboard", label: "Dashboard", Icon: Home  },
-  { path: "/visitors",  label: "Visitors",  Icon: Users },
-  { path: "/vehicles",  label: "Vehicles",  Icon: Car   },
+  { path: "/dashboard", label: "Dashboard", Icon: Home   },
+  { path: "/visitors",  label: "Visitors",  Icon: Users  },
+  { path: "/vehicles",  label: "Vehicles",  Icon: Car    },
+  { path: "/patrol",    label: "Patrol",    Icon: Shield },
 ];
 
 export default function BottomNav() {

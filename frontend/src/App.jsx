@@ -14,7 +14,8 @@ import Securities   from "./pages/setup/Securities";
 import Designations from "./pages/setup/Designations";
 import PatrolPoints from "./pages/setup/PatrolPoints";
 import CompVehicles from "./pages/setup/CompVehicles";
-import PatrolPlan   from "./pages/setup/PatrolPlan";
+import PatrolPlan      from "./pages/setup/PatrolPlan";
+import SecurityPatrol  from "./pages/patrol/SecurityPatrol";
 
 function ComingSoon({ title }) {
   return (
@@ -72,7 +73,7 @@ function AppRoutes() {
         <Route path="setup/cop-vehicles"    element={<CompVehicles/>}/>
         <Route path="setup/patrol-plan"     element={<PatrolPlan/>}/>
         <Route path="setup/patrol-schedule" element={<ComingSoon title="Patrol Schedule"/>}/>
-        <Route path="patrol"                element={<ComingSoon title="Security Patrol"/>}/>
+        <Route path="patrol"                element={<SecurityPatrol/>}/>
         <Route path="users"                 element={<ComingSoon title="User Management"/>}/>
         <Route path="*"                     element={<Navigate to="/dashboard" replace/>}/>
       </Route>
