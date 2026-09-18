@@ -121,48 +121,50 @@ router.delete("/plans/:uid/detail/:detailUid", gmsProtect, async (req, res, next
 // GET /api/patrol/sessions?date=YYYY-MM-DD&gateId=0
 router.get("/sessions", gmsProtect, async (req, res, next) => {
   try {
-    const date    = req.query.date   || new Date().toISOString().split("T")[0];
-    const gateId  = Number(req.query.gateId)  || getGateId(req);
-    const guardId = Number(req.query.guardId) || 0;
-    const data = await svc.getPatrolSessions({ companyId:getCompanyId(req), date, gateId, guardId });
+    const date    = req.query.date  || new Date().toISOString().split("T")[0];
+    const gateUid = Number(req.query.gateId) || getGateId(req);
+    const data = await svc.getPatrolSessions({ date, gateUid, companyId: getCompanyId(req) });
     res.json({ success:true, data });
   } catch(err) { next(err); }
 });
 
-// POST /api/patrol/sessions  — create new patrol session
+// POST /api/patrol/sessions  — create new patrol session (SP_APP_IUD_PatrolM)
 router.post("/sessions", gmsProtect, async (req, res, next) => {
   try {
-    const { gateName, securityName } = req.body;
+    const { gateName, securityName, securityUid } = req.body;
     const data = await svc.createPatrolSession({
       companyId:    getCompanyId(req),
       userId:       getUserId(req),
-      gateId:       getGateId(req),
-      gateName:     gateName    || req.gmsUser?.gateName    || "",
-      securityName: securityName || req.gmsUser?.userName   || "",
+      gateUid:      getGateId(req),
+      securityUid:  securityUid ? Number(securityUid) : getUserId(req),
+      gateName:     gateName     || "",
+      securityName: securityName || "",
     });
     res.json({ success:true, data });
   } catch(err) { next(err); }
 });
 
-// PUT /api/patrol/sessions/:uid/end
+// PUT /api/patrol/sessions/:uid/end — marks patrol session as ended
 router.put("/sessions/:uid/end", gmsProtect, async (req, res, next) => {
   try {
-    await svc.endPatrolSession({
-      companyId: getCompanyId(req),
-      userId:    getUserId(req),
-      uid:       Number(req.params.uid),
+    // End patrol: pass existing uid, SP updates EndTime on PatrolM
+    await svc.createPatrolSession({
+      companyId:    getCompanyId(req),
+      userId:       getUserId(req),
+      gateUid:      getGateId(req),
+      securityUid:  getUserId(req),
+      gateName:     "",
+      securityName: "",
+      endUid:       Number(req.params.uid), // signals end, not create
     });
     res.json({ success:true, message:"Patrol ended" });
   } catch(err) { next(err); }
 });
 
-// GET /api/patrol/sessions/:uid/checkpoints
+// GET /api/patrol/sessions/:uid/checkpoints — SP_App_Get_PatrolM_Edit_Grid
 router.get("/sessions/:uid/checkpoints", gmsProtect, async (req, res, next) => {
   try {
-    const data = await svc.getSessionCheckpoints({
-      companyId:  getCompanyId(req),
-      patrolMUid: Number(req.params.uid),
-    });
+    const data = await svc.getSessionCheckpoints({ patrolMUid: Number(req.params.uid) });
     res.json({ success:true, data });
   } catch(err) { next(err); }
 });

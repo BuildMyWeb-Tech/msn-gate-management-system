@@ -1,7 +1,6 @@
 // services/patrolService.js
-const repo             = require("../repositories/patrolRepo");
-const setupRepo        = require("../repositories/setupRepo");
-const cloudinarySvc    = require("./cloudinaryService");
+const repo          = require("../repositories/patrolRepo");
+const cloudinarySvc = require("./cloudinaryService");
 
 // ── Legacy checkpoint log ─────────────────────────────────────────────────────
 async function getPatrolLogs({ companyId, date, guardId }) {
@@ -22,7 +21,7 @@ async function markCheckpoint({ companyId, gateId, guardId, locationId, remarks 
 
 // ── GPS Haversine distance (metres) ──────────────────────────────────────────
 function haversineM(lat1, lng1, lat2, lng2) {
-  const R  = 6371000; // Earth radius in metres
+  const R  = 6371000;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -54,30 +53,9 @@ async function validateGPS({ companyId, lat, lng }) {
   return best;
 }
 
-// ── Patrol Sessions ───────────────────────────────────────────────────────────
-async function createPatrolSession({ companyId, userId, gateId, gateName, securityName }) {
-  const row = await repo.iudPatrolSession({ companyId, userId, gateId: gateId || 0, mode: 1, uid: 0 });
-  const rc  = row?.ResponseCode ?? 100;
-  if (rc > 101) throw Object.assign(new Error(row?.ResponseMessage || "Failed to create patrol session"), { status: 400 });
-  return {
-    uid:          row?.PatrolUid ?? row?.Uid ?? row?.uid ?? null,
-    patrolId:     row?.PatrolID  ?? row?.PatrolId ?? null,
-    gateName:     gateName       ?? row?.GateName ?? "",
-    securityName: securityName   ?? row?.SecurityName ?? "",
-    startTime:    row?.StartTime ?? new Date().toISOString(),
-    endTime:      null,
-  };
-}
-
-async function endPatrolSession({ companyId, userId, uid }) {
-  const row = await repo.iudPatrolSession({ companyId, userId, gateId: 0, mode: 2, uid });
-  const rc  = row?.ResponseCode ?? 100;
-  if (rc > 101) throw Object.assign(new Error(row?.ResponseMessage || "Failed to end patrol"), { status: 400 });
-  return row;
-}
-
-async function getPatrolSessions({ companyId, date, gateId, guardId }) {
-  const rows = await repo.getPatrolSessions({ companyId, date, gateId, guardId });
+// ── Patrol Sessions — using SP_App_Get_PatrolM_FrontGrid ──────────────────────
+async function getPatrolSessions({ date, gateUid, companyId }) {
+  const rows = await repo.getPatrolSessions({ date, gateUid, companyId });
   return rows.map(r => ({
     uid:          r.Uid          ?? r.uid,
     patrolId:     r.PatrolID     ?? r.PatrolId    ?? r.patrolId,
@@ -88,9 +66,9 @@ async function getPatrolSessions({ companyId, date, gateId, guardId }) {
   }));
 }
 
-// ── Session Checkpoints ───────────────────────────────────────────────────────
-async function getSessionCheckpoints({ companyId, patrolMUid }) {
-  const rows = await repo.getPatrolSessionLogs({ companyId, patrolMUid });
+// ── Session Checkpoints — using SP_App_Get_PatrolM_Edit_Grid ─────────────────
+async function getSessionCheckpoints({ patrolMUid }) {
+  const rows = await repo.getPatrolSessionLogs({ uid: patrolMUid });
   return rows.map(r => ({
     uid:          r.Uid          ?? r.uid,
     slNo:         r.SlNo         ?? r.slNo,
@@ -100,13 +78,43 @@ async function getSessionCheckpoints({ companyId, patrolMUid }) {
   }));
 }
 
+// ── Create / End Patrol Session — using SP_APP_IUD_PatrolM ───────────────────
+// SP_APP_IUD_PatrolM 0,'2026-09-17 00:00:00.000',1,3,1,1,1,6,'2026-09-17 10:00:00.000'
+// Params: Uid, PatrolDate, GateUid, SecurityUid, CompanyId, UserId, PatrolPlanUid, SlNo, StartTime
+// Uid=0 → new session; Uid>0 → end existing session
+async function createPatrolSession({ companyId, userId, gateUid, securityUid, gateName, securityName, endUid }) {
+  const now = new Date();
+  const row = await repo.iudPatrolM({
+    uid:           endUid || 0,
+    patrolDate:    now,
+    gateUid:       gateUid    || 0,
+    securityUid:   securityUid || userId,
+    companyId:     companyId  || 1,
+    userId:        userId     || 0,
+    patrolPlanUid: 0,
+    slNo:          0,
+    startTime:     now,
+  });
+
+  const rc = row?.ResponseCode ?? 100;
+  if (rc > 101) throw Object.assign(new Error(row?.ResponseMessage || "Failed to create patrol session"), { status: 400 });
+
+  return {
+    uid:          row?.PatrolUid  ?? row?.Uid  ?? row?.uid  ?? null,
+    patrolId:     row?.PatrolID   ?? row?.PatrolId           ?? null,
+    gateName:     row?.GateName   ?? gateName                ?? "",
+    securityName: row?.SecurityName ?? securityName          ?? "",
+    startTime:    row?.StartTime  ?? now.toISOString(),
+    endTime:      null,
+  };
+}
+
+// ── Log checkpoint — uploads selfie then calls SP_APP_IUD_PatrolM with detail ─
 async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locationName, selfieImage }) {
   let selfieUrl = "";
 
-  // Upload selfie to Cloudinary if provided (selfieImage is a data URI)
   if (selfieImage) {
     try {
-      // Strip the "data:image/...;base64," prefix
       const base64Only = selfieImage.replace(/^data:image\/\w+;base64,/, "");
       selfieUrl = await cloudinarySvc.uploadPhoto(base64Only, "msn-gms/patrol-selfies");
     } catch (err) {
@@ -114,14 +122,17 @@ async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locat
     }
   }
 
-  const visitedAt = new Date().toISOString();
-  const row = await repo.iudPatrolCheckpoint({
-    companyId, userId, patrolMUid,
-    locationUid: Number(locationUid),
-    visitedAt,
-    selfieUrl,
-    mode: 1,
-    uid: 0,
+  const now = new Date();
+  const row = await repo.iudPatrolM({
+    uid:           patrolMUid,   // existing session uid — SP updates detail
+    patrolDate:    now,
+    gateUid:       0,
+    securityUid:   userId,
+    companyId:     companyId || 1,
+    userId:        userId,
+    patrolPlanUid: locationUid,  // location being validated
+    slNo:          0,            // SP auto-increments
+    startTime:     now,
   });
 
   const rc = row?.ResponseCode ?? 100;
@@ -131,7 +142,7 @@ async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locat
     uid:          row?.Uid          ?? row?.uid,
     slNo:         row?.SlNo         ?? row?.slNo,
     locationName: row?.LocationName ?? locationName ?? "",
-    visitedAt,
+    visitedAt:    now.toISOString(),
     selfieUrl,
   };
 }
@@ -139,6 +150,6 @@ async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locat
 module.exports = {
   getPatrolLogs, markCheckpoint,
   validateGPS,
-  createPatrolSession, endPatrolSession, getPatrolSessions,
+  createPatrolSession, getPatrolSessions,
   getSessionCheckpoints, logCheckpoint,
 };
