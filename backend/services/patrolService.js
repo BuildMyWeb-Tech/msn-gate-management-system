@@ -19,81 +19,60 @@ async function markCheckpoint({ companyId, gateId, guardId, locationId, remarks 
   });
 }
 
-// ── GPS Haversine distance (metres) ──────────────────────────────────────────
-function haversineM(lat1, lng1, lat2, lng2) {
-  const R  = 6371000;
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const a  = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// GPS validation — returns matching patrol point within 6 m or null
+// ── GPS Validation — PR_Validate_PatrolPoints @c1, @c2, @Companyid ────────────
+// SP returns: ResponseCode, uid, PatrolPointCode, PatrolPointName
 async function validateGPS({ companyId, lat, lng }) {
-  const points = await repo.getPatrolPointsWithGPS(companyId);
-  const RADIUS_M = 6;
-  let best = null, bestDist = Infinity;
-
-  for (const p of points) {
-    const pLat = parseFloat(p.gpsid1 ?? p.GpsId1 ?? p.Lat ?? 0);
-    const pLng = parseFloat(p.gpsid2 ?? p.GpsId2 ?? p.Lng ?? 0);
-    if (!pLat || !pLng) continue;
-    const dist = haversineM(lat, lng, pLat, pLng);
-    if (dist <= RADIUS_M && dist < bestDist) {
-      bestDist = dist;
-      best = {
-        uid:  p.uid ?? p.Uid ?? p.locationuid ?? p.LocationUid,
-        name: p.gname ?? p.GName ?? p.locationname ?? p.LocationName ?? "Unknown Point",
-        dist: Math.round(dist * 10) / 10,
-      };
-    }
-  }
-  return best;
+  const row = await repo.validatePatrolPoints({ lat, lng, companyId });
+  if (!row) return null;
+  if (row.ResponseCode != null && row.ResponseCode > 101) return null;
+  if (!row.uid && !row.PatrolPointName) return null;
+  return {
+    uid:  row.uid,
+    name: row.PatrolPointName,
+    code: row.PatrolPointCode,
+  };
 }
 
-// ── Patrol Sessions — using SP_App_Get_PatrolM_FrontGrid ──────────────────────
+// ── Patrol Sessions — SP_App_Get_PatrolM_FrontGrid ────────────────────────────
+// SP columns: uid, PatrolID, Scurity (typo), Gate, Start, Endd (typo)
 async function getPatrolSessions({ date, gateUid, companyId }) {
   const rows = await repo.getPatrolSessions({ date, gateUid, companyId });
-  return rows.map(r => ({
-    uid:          r.Uid          ?? r.uid,
-    patrolId:     r.PatrolID     ?? r.PatrolId    ?? r.patrolId,
-    securityName: r.SecurityName ?? r.securityName,
-    gateName:     r.GateName     ?? r.gateName,
-    startTime:    r.StartTime    ?? r.startTime,
-    endTime:      r.EndTime      ?? r.endTime ?? null,
+  return rows
+    .filter(r => r.ResponseCode == null || Number(r.ResponseCode) <= 101)
+    .map(r => ({
+    uid:          r.uid,
+    patrolId:     r.PatrolID,
+    securityName: r.Scurity,
+    gateName:     r.Gate,
+    startTime:    r.Start,
+    endTime:      r.Endd ?? null,
   }));
 }
 
-// ── Session Checkpoints — using SP_App_Get_PatrolM_Edit_Grid ─────────────────
+// ── Session Checkpoints — SP_App_Get_PatrolM_Edit_Grid ────────────────────────
+// SP returns two recordsets; use rows from recordsets[1]: SINo, PatrolPoint, Time
 async function getSessionCheckpoints({ patrolMUid }) {
-  const rows = await repo.getPatrolSessionLogs({ uid: patrolMUid });
+  const { rows } = await repo.getPatrolSessionLogs({ uid: patrolMUid });
   return rows.map(r => ({
-    uid:          r.Uid          ?? r.uid,
-    slNo:         r.SlNo         ?? r.slNo,
-    locationName: r.LocationName ?? r.locationName,
-    visitedAt:    r.VisitedAt    ?? r.visitedAt,
-    selfieUrl:    r.SelfieUrl    ?? r.selfieUrl ?? null,
+    slNo:         r.SINo,
+    locationName: r.PatrolPoint,
+    visitedAt:    r.Time,
+    selfieUrl:    null,
   }));
 }
 
-// ── Create / End Patrol Session — using SP_APP_IUD_PatrolM ───────────────────
-// SP_APP_IUD_PatrolM 0,'2026-09-17 00:00:00.000',1,3,1,1,1,6,'2026-09-17 10:00:00.000'
-// Params: Uid, PatrolDate, GateUid, SecurityUid, CompanyId, UserId, PatrolPlanUid, SlNo, StartTime
-// Uid=0 → new session; Uid>0 → end existing session
+// ── Create / End Patrol Session — SP_APP_IUD_PatrolM ─────────────────────────
 async function createPatrolSession({ companyId, userId, gateUid, securityUid, gateName, securityName, endUid }) {
   const now = new Date();
   const row = await repo.iudPatrolM({
-    uid:           endUid || 0,
-    patrolDate:    now,
-    gateUid:       gateUid    || 0,
-    securityUid:   securityUid || userId,
-    companyId:     companyId  || 1,
-    userId:        userId     || 0,
-    patrolPlanUid: 0,
-    slNo:          0,
-    startTime:     now,
+    uid:           endUid      || 0,
+    dt:            now,
+    gateid:        gateUid     || 0,
+    securityid:    securityUid || userId,
+    companyId:     companyId   || 1,
+    patrolId:      0,
+    active:        1,
+    patrolPointUid: 0,
   });
 
   const rc = row?.ResponseCode ?? 100;
@@ -109,7 +88,7 @@ async function createPatrolSession({ companyId, userId, gateUid, securityUid, ga
   };
 }
 
-// ── Log checkpoint — uploads selfie then calls SP_APP_IUD_PatrolM with detail ─
+// ── Log checkpoint — uploads selfie then logs via SP_APP_IUD_PatrolM ──────────
 async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locationName, selfieImage }) {
   let selfieUrl = "";
 
@@ -124,15 +103,15 @@ async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locat
 
   const now = new Date();
   const row = await repo.iudPatrolM({
-    uid:           patrolMUid,   // existing session uid — SP updates detail
-    patrolDate:    now,
-    gateUid:       0,
-    securityUid:   userId,
-    companyId:     companyId || 1,
-    userId:        userId,
-    patrolPlanUid: locationUid,  // location being validated
-    slNo:          0,            // SP auto-increments
-    startTime:     now,
+    uid:          patrolMUid,
+    dt:           now,
+    gateid:       0,
+    securityid:   userId,
+    companyId:    companyId || 1,
+    userid:       userId,
+    patrolId:       patrolMUid,
+    active:         1,
+    patrolPointUid: locationUid || 0,
   });
 
   const rc = row?.ResponseCode ?? 100;

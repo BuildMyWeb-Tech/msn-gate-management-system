@@ -28,7 +28,6 @@ async function insertPatrolLog({ companyId, guardId, locationId, gateId, visited
 
 // ── Patrol Sessions ───────────────────────────────────────────────────────────
 // SP: SP_App_Get_PatrolM_FrontGrid @date date, @Gateid int, @Companyid int
-// Returns patrol session list for the Patrol List screen
 async function getPatrolSessions({ date, gateUid, companyId }) {
   const pool = await poolPromise;
   const result = await pool
@@ -41,52 +40,56 @@ async function getPatrolSessions({ date, gateUid, companyId }) {
 }
 
 // SP: SP_App_Get_PatrolM_Edit_Grid @Uid int
-// Returns checkpoint rows for a patrol session (edit view)
+// Returns TWO recordsets:
+//   recordsets[0] — session header row (uid, PatrolID, Security, Gate)
+//   recordsets[1] — checkpoint detail rows (SINo, PatrolPoint, Time)
 async function getPatrolSessionLogs({ uid }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
     .input("Uid", sql.Int, uid)
     .execute("SP_App_Get_PatrolM_Edit_Grid");
-  return result.recordset || [];
+  return {
+    header: result.recordsets?.[0]?.[0] ?? null,
+    rows:   result.recordsets?.[1]       ?? result.recordset ?? [],
+  };
 }
 
-// SP: SP_APP_IUD_PatrolM
-// Handles INSERT into both PatrolM (session header) and PatrolMlist (checkpoint detail)
-// Params: Uid, PatrolDate, GateUid, SecurityUid, CompanyId, UserId, PatrolPlanUid, SlNo, StartTime
-// Uid=0 → new session insert
-async function iudPatrolM({ uid, patrolDate, gateUid, securityUid, companyId, userId, patrolPlanUid, slNo, startTime }) {
+// SP: SP_APP_IUD_PatrolM — 9 params confirmed via error discovery
+// @Uid, @Dt, @Gateid, @Securityid, @Companyid, @Userid, @PatrolId, @Active, @Patrolpointuid
+async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, active, patrolPointUid }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("Uid",          sql.Int,      uid          || 0)
-    .input("PatrolDate",   sql.DateTime, new Date(patrolDate))
-    .input("GateUid",      sql.Int,      gateUid      || 0)
-    .input("SecurityUid",  sql.Int,      securityUid  || 0)
-    .input("CompanyId",    sql.Int,      companyId    || 1)
-    .input("UserId",       sql.Int,      userId       || 0)
-    .input("PatrolPlanUid",sql.Int,      patrolPlanUid|| 0)
-    .input("SlNo",         sql.Int,      slNo         || 0)
-    .input("StartTime",    sql.DateTime, new Date(startTime))
+    .input("uid",            sql.BigInt,   uid            || 0)
+    .input("Dt",             sql.Date,     new Date(dt))
+    .input("PatrolId",       sql.Int,      patrolId       || 0)
+    .input("Gateid",         sql.Int,      gateid         || 0)
+    .input("securityid",     sql.Int,      securityid     || 0)
+    .input("Active",         sql.Int,      active         ?? 1)
+    .input("Companyid",      sql.Int,      companyId      || 1)
+    .input("Patrolpointuid", sql.Int,      patrolPointUid || 0)
+    .input("PunchTime",      sql.DateTime, new Date(dt))
     .execute("SP_APP_IUD_PatrolM");
   return result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
 }
 
-// Fetch all patrol points with GPS coords (lat=gpsid1, lng=gpsid2)
-// Uses existing SP: PR_Get_LocationData_ForFrontgrid
-async function getPatrolPointsWithGPS(companyId) {
+// SP: PR_Validate_PatrolPoints @c1 nvarchar(30), @c2 nvarchar(30), @Companyid int
+// Returns: ResponseCode, ResponseMessage, uid, PatrolPointCode, PatrolPointName
+async function validatePatrolPoints({ lat, lng, companyId }) {
   const pool = await poolPromise;
   const result = await pool
     .request()
-    .input("tag",       sql.Int, 1)
-    .input("companyid", sql.Int, companyId)
-    .execute("PR_Get_LocationData_ForFrontgrid");
-  return result.recordset || [];
+    .input("c1",        sql.NVarChar(30), String(lat))
+    .input("c2",        sql.NVarChar(30), String(lng))
+    .input("Companyid", sql.Int,          companyId || 1)
+    .execute("PR_Validate_PatrolPoints");
+  return result.recordset?.[0] ?? null;
 }
 
 module.exports = {
   getPatrolLogs, insertPatrolLog,
   getPatrolSessions, getPatrolSessionLogs,
   iudPatrolM,
-  getPatrolPointsWithGPS,
+  validatePatrolPoints,
 };
