@@ -11,8 +11,9 @@ const today = () => new Date().toISOString().split("T")[0];
 
 const fmtTime = v => {
   if (!v) return "—";
-  try { return new Date(v).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }); }
-  catch { return v; }
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v; // SP returns time strings like "7:57" — display as-is
+  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 };
 
 const fmtDate = v => {
@@ -526,11 +527,18 @@ export default function SecurityPatrol() {
                   onMouseEnter={e => e.currentTarget.style.background = "var(--surface2)"}
                   onMouseLeave={e => e.currentTarget.style.background = ""}>
                   <td style={S.td}>
-                    <span style={{ fontWeight: 700, color: "var(--accent)" }}>{s.patrolId || s.PatrolID || `#${s.uid}`}</span>
+                    <span style={{ fontWeight: 700, color: "var(--accent)" }}>
+                      {(s.patrolId && String(s.patrolId) !== "0") ? s.patrolId : (s.uid ? `#${s.uid}` : "—")}
+                    </span>
                   </td>
                   <td style={S.td}>{s.securityName || s.SecurityName || "—"}</td>
                   <td style={S.td}>{fmtTime(s.startTime || s.StartTime)}</td>
-                  <td style={S.td}>{s.endTime || s.EndTime ? fmtTime(s.endTime || s.EndTime) : <span style={{ color: "var(--green)", fontSize: 11, fontWeight: 600 }}>Active</span>}</td>
+                  <td style={S.td}>{(() => {
+                    const et = s.endTime || s.EndTime;
+                    if (!et || et === "00:00" || et === "00:00:00" || et === "00:00:00.000")
+                      return <span style={{ color: "var(--green)", fontSize: 11, fontWeight: 600 }}>Active</span>;
+                    return fmtTime(et);
+                  })()}</td>
                 </tr>
               ))}
             </tbody>
