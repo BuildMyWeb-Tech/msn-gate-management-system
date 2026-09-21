@@ -262,7 +262,7 @@ function PatrolSession({ session, onBack, setToast }) {
     try {
       await endPatrolSession(session.uid);
       setToast({ type: "success", msg: "Patrol ended" });
-      onBack(true); // true = refresh list
+      onBack(true, session); // pass session so parent can record end time locally
     } catch (err) {
       setToast({ type: "error", msg: err.response?.data?.message || "Failed to end patrol" });
     } finally { setEnding(false); }
@@ -410,11 +410,20 @@ export default function SecurityPatrol() {
   const [toast, setToast]         = useState(null);
   const [activeSession, setActiveSession] = useState(null);
 
+  // SP_App_Get_PatrolM_FrontGrid does not return today's sessions.
+  // We track locally-created sessions and merge them with SP data so they stay visible.
+  const localSessionsRef = useRef([]); // { ...sessionData, _date: "YYYY-MM-DD", endTime? }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getPatrolSessions(date, user?.gateId || 0);
-      setSessions(res.data || []);
+      const spData = res.data || [];
+      const spUids = new Set(spData.map(s => String(s.uid)));
+      const localOnly = localSessionsRef.current.filter(s =>
+        s._date === date && !spUids.has(String(s.uid))
+      );
+      setSessions([...spData, ...localOnly]);
     } catch {
       setToast({ type: "error", msg: "Failed to load patrol sessions" });
     } finally { setLoading(false); }
@@ -427,6 +436,8 @@ export default function SecurityPatrol() {
     try {
       const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
       if (res.success) {
+        const tracked = { ...res.data, _date: date };
+        localSessionsRef.current = [...localSessionsRef.current, tracked];
         setActiveSession(res.data);
       } else {
         setToast({ type: "error", msg: res.message || "Failed to create patrol session" });
@@ -438,8 +449,15 @@ export default function SecurityPatrol() {
 
   const handleSessionRow = (session) => setActiveSession(session);
 
-  const handleBackFromSession = (refresh) => {
+  const handleBackFromSession = (refresh, endedSession) => {
     setActiveSession(null);
+    if (endedSession) {
+      // Record end time locally so it shows in the list even if SP doesn't return today's sessions
+      const endTime = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      localSessionsRef.current = localSessionsRef.current.map(s =>
+        String(s.uid) === String(endedSession.uid) ? { ...s, endTime } : s
+      );
+    }
     if (refresh) load();
   };
 
