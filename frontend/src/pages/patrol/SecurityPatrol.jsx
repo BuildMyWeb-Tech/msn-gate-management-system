@@ -81,11 +81,14 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         setStep("idle");
         return;
       }
-      await loadFaceModels();
-      const s = await navigator.mediaDevices.getUserMedia({
+      // getUserMedia MUST be called before any await — iOS Safari closes the
+      // user-gesture window if an async operation (like model download) runs first.
+      // Start camera and model load in parallel so both happen simultaneously.
+      const cameraPromise = navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
+      const [s] = await Promise.all([cameraPromise, loadFaceModels()]);
       setStream(s);
       setStep("camera");
     } catch (e) {
