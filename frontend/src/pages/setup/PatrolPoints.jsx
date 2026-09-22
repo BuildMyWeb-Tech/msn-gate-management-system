@@ -16,9 +16,10 @@ function normalise(r) {
   };
 }
 
-// ── GPS capture button ────────────────────────────────────────
+// ── GPS capture button — averages 3 readings to reduce variance ───────────────
 function GPSButton({ onCapture }) {
   const [getting, setGetting] = useState(false);
+  const [progress, setProgress] = useState(0); // 0-3
   const [error, setError]     = useState("");
 
   const capture = () => {
@@ -28,21 +29,40 @@ function GPSButton({ onCapture }) {
     }
     setGetting(true);
     setError("");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        onCapture(lat, lng);
-        setGetting(false);
-      },
-      (err) => {
-        setGetting(false);
-        if (err.code === 1) setError("Location permission denied — enable in browser settings");
-        else if (err.code === 2) setError("Location unavailable — try outdoors");
-        else setError("GPS timeout — try again");
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+    setProgress(0);
+
+    const readings = [];
+    const SAMPLES = 3;
+
+    const takeReading = (n) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          readings.push({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy });
+          setProgress(n);
+          if (n < SAMPLES) {
+            setTimeout(() => takeReading(n + 1), 800);
+          } else {
+            // Average all readings (weighted by inverse accuracy — smaller acc = more precise)
+            const totalWeight = readings.reduce((s, r) => s + 1 / r.acc, 0);
+            const avgLat = readings.reduce((s, r) => s + r.lat / r.acc, 0) / totalWeight;
+            const avgLng = readings.reduce((s, r) => s + r.lng / r.acc, 0) / totalWeight;
+            onCapture(avgLat.toFixed(6), avgLng.toFixed(6));
+            setGetting(false);
+            setProgress(0);
+          }
+        },
+        (err) => {
+          setGetting(false);
+          setProgress(0);
+          if (err.code === 1) setError("Location permission denied — enable in browser settings");
+          else if (err.code === 2) setError("Location unavailable — try outdoors");
+          else setError("GPS timeout — try again");
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    };
+
+    takeReading(1);
   };
 
   return (
@@ -62,7 +82,7 @@ function GPSButton({ onCapture }) {
         onMouseEnter={e=>{if(!getting)e.currentTarget.style.background="rgba(245,158,11,0.2)";}}
         onMouseLeave={e=>{e.currentTarget.style.background="var(--accent-dim)";}}>
         {getting
-          ? <><Loader size={13} style={{animation:"spin 1s linear infinite"}}/> Getting GPS...</>
+          ? <><Loader size={13} style={{animation:"spin 1s linear infinite"}}/> Reading {progress}/{3}...</>
           : <><Navigation size={13}/> Use My Location</>}
       </button>
       {error && <div style={{fontSize:11,color:"var(--red)",marginTop:4}}>{error}</div>}
