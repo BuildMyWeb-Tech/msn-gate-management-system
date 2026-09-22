@@ -73,6 +73,14 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     setError("");
     setStep("loading");
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const isInsecure = location.protocol !== "https:" && location.hostname !== "localhost";
+        setError(isInsecure
+          ? "Camera requires HTTPS — open the app via https:// or on localhost"
+          : "Camera not supported on this browser");
+        setStep("idle");
+        return;
+      }
       await loadFaceModels();
       const s = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
@@ -81,7 +89,16 @@ function FaceCaptureModal({ onCapture, onSkip }) {
       setStream(s);
       setStep("camera");
     } catch (e) {
-      setError(e.name === "NotAllowedError" ? "Camera permission denied" : "Could not open camera");
+      let msg;
+      if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
+        msg = "Camera permission denied — allow in browser settings";
+      else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError")
+        msg = "No camera found on this device";
+      else if (e.name === "NotReadableError" || e.name === "TrackStartError")
+        msg = "Camera in use by another app — close it and retry";
+      else
+        msg = `Could not open camera (${e.name || e.message})`;
+      setError(msg);
       setStep("idle");
     }
   };
@@ -213,14 +230,32 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
   // Step 2 — Open camera when user clicks "Take Selfie"
   const openCamera = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const isInsecure = location.protocol !== "https:" && location.hostname !== "localhost";
+        setToast({ type: "error", msg: isInsecure
+          ? "Camera requires HTTPS — open the app via https://"
+          : "Camera not supported on this browser" });
+        onClose();
+        return;
+      }
       const s = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
       setStream(s);
       setStep("selfie");
-    } catch {
-      setToast({ type: "error", msg: "Camera access denied. Please allow camera permission." });
+    } catch (e) {
+      let msg;
+      if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
+        msg = "Camera permission denied — allow in browser settings";
+      else if (e.name === "NotFoundError")
+        msg = "No camera found on this device";
+      else if (e.name === "NotReadableError" || e.name === "TrackStartError")
+        msg = "Camera in use by another app — close it and retry";
+      else
+        msg = `Could not open camera (${e.name || e.message})`;
+      setToast({ type: "error", msg });
+      onClose();
     }
   };
 
