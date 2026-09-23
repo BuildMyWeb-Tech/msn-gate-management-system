@@ -193,41 +193,60 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
   const [selfieBlob, setSelfieBlob] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [faceStatus, setFaceStatus] = useState(""); // "" | "matched" | "no-match" | "no-face"
+  const [gpsProgress, setGpsProgress] = useState(0); // 0-3 (shows Reading n/3)
+  const [capturedCoords, setCapturedCoords] = useState(null); // { lat, lng } — temp debug display
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const capturedCanvasRef = useRef(null); // holds snapshot for face comparison
 
-  // Step 1 — GPS validation on mount
+  // Step 1 — take 3 GPS readings, weighted average by accuracy, then validate
   useEffect(() => {
     if (!navigator.geolocation) {
       setToast({ type: "error", msg: "GPS not supported on this device" });
       onClose();
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        try {
-          const { latitude: lat, longitude: lng } = pos.coords;
-          const res = await validatePatrolPoint(lat, lng);
-          if (res.success && res.data) {
-            setFoundPoint(res.data);
-            setStep("found");
+    const SAMPLES = 3;
+    const readings = [];
+
+    const takeReading = (n) => {
+      setGpsProgress(n);
+      navigator.geolocation.getCurrentPosition(
+        async pos => {
+          readings.push({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy });
+          if (n < SAMPLES) {
+            setTimeout(() => takeReading(n + 1), 800);
           } else {
-            setToast({ type: "error", msg: res.message || "No patrol point found within 6 metres" });
-            onClose();
+            const totalWeight = readings.reduce((s, r) => s + 1 / r.acc, 0);
+            const avgLat = readings.reduce((s, r) => s + r.lat / r.acc, 0) / totalWeight;
+            const avgLng = readings.reduce((s, r) => s + r.lng / r.acc, 0) / totalWeight;
+            const coords = { lat: avgLat.toFixed(6), lng: avgLng.toFixed(6) };
+            setCapturedCoords(coords);
+            try {
+              const res = await validatePatrolPoint(avgLat, avgLng);
+              if (res.success && res.data) {
+                setFoundPoint(res.data);
+                setStep("found");
+              } else {
+                setToast({ type: "error", msg: res.message || "No patrol point found within 6 metres" });
+                onClose();
+              }
+            } catch (err) {
+              setToast({ type: "error", msg: err.response?.data?.message || "Location validation failed" });
+              onClose();
+            }
           }
-        } catch (err) {
-          setToast({ type: "error", msg: err.response?.data?.message || "Location validation failed" });
+        },
+        err => {
+          const msgs = { 1: "Location permission denied", 2: "Location unavailable", 3: "Location request timed out" };
+          setToast({ type: "error", msg: msgs[err.code] || "Failed to get GPS location" });
           onClose();
-        }
-      },
-      err => {
-        const msgs = { 1: "Location permission denied", 2: "Location unavailable", 3: "Location request timed out" };
-        setToast({ type: "error", msg: msgs[err.code] || "Failed to get GPS location" });
-        onClose();
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      );
+    };
+
+    takeReading(1);
   }, []); // eslint-disable-line
 
   // Step 2 — Open camera when user clicks "Take Selfie"
@@ -417,7 +436,16 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
         {step === "locating" && (
           <div style={{ textAlign: "center", padding: "20px 0" }}>
             <Loader size={32} style={{ color: "var(--accent)", animation: "spin 1s linear infinite", marginBottom: 12 }} />
-            <p style={{ color: "var(--text2)", fontSize: 13 }}>Getting GPS location...</p>
+            <p style={{ color: "var(--text2)", fontSize: 13 }}>
+              {gpsProgress > 0 ? `Reading ${gpsProgress}/3...` : "Getting GPS location..."}
+            </p>
+            {gpsProgress > 0 && (
+              <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:8 }}>
+                {[1,2,3].map(i => (
+                  <div key={i} style={{ width:8, height:8, borderRadius:"50%", background: i <= gpsProgress ? "var(--accent)" : "var(--border)" }}/>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -428,6 +456,12 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
               <MapPin size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
               {foundPoint?.name}
             </div>
+            {/* Temporary coordinate display — remove once GPS logic is verified */}
+            {capturedCoords && (
+              <div style={{ padding:"6px 10px", marginBottom:12, background:"rgba(245,158,11,0.07)", border:"1px solid rgba(245,158,11,0.2)", borderRadius:"var(--radius-xs)", fontSize:11, fontFamily:"monospace", color:"var(--text2)" }}>
+                GPS passed to SP: {capturedCoords.lat}, {capturedCoords.lng}
+              </div>
+            )}
           </>
         )}
 

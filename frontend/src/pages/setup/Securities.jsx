@@ -198,19 +198,27 @@ export default function Securities() {
       :rows.length===0?<div className="empty-state"><div className="empty-icon"><Shield size={22}/></div><h3>No security records</h3></div>
       :(
         <div className="table-wrap"><table>
-          <thead><tr><th>Photo</th><th>Name</th><th>Code</th><th>Gender</th><th>Mobile</th><th>Status</th><th style={{width:160}}>Actions</th></tr></thead>
+          <thead><tr>
+            <th style={{fontWeight:700}}>Photo</th>
+            <th style={{fontWeight:700}}>Name</th>
+            <th style={{fontWeight:700}}>Status</th>
+            <th style={{fontWeight:700}}>Code</th>
+            <th style={{fontWeight:700}}>Gender</th>
+            <th style={{fontWeight:700}}>Mobile</th>
+            <th style={{fontWeight:700,width:120}}>Actions</th>
+          </tr></thead>
           <tbody>
             {rows.map(row=>(
               <tr key={row.uid} onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <td><PhotoStamp photo={row.photo} name={row.sname}/></td>
                 <td style={{fontWeight:600}}>{row.sname||"—"}</td>
+                <td>{row.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</td>
                 <td className="td-muted">{row.scode||"—"}</td>
                 <td>{row.gender||"—"}</td>
                 <td className="td-muted">{row.smobile1||"—"}</td>
-                <td>{row.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</td>
                 <td><div style={{display:"flex",gap:4}}>
-                  <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}><Eye size={11}/> View</button>
                   <button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}><Pencil size={11}/> Edit</button>
+                  <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}><Eye size={11}/> View</button>
                   <button className="btn btn-ghost-danger btn-xs" onClick={()=>onDelete(row.uid)}><Trash2 size={11}/></button>
                 </div></td>
               </tr>
