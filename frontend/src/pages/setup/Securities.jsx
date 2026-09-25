@@ -197,7 +197,7 @@ export default function Securities() {
       {loading?<div className="spinner-page"><div className="spinner"/></div>
       :rows.length===0?<div className="empty-state"><div className="empty-icon"><Shield size={22}/></div><h3>No security records</h3></div>
       :(
-        <div className="table-wrap"><table>
+        <div className="table-wrap"><table style={{minWidth:600}}>
           <thead><tr>
             <th style={{fontWeight:700}}>Photo</th>
             <th style={{fontWeight:700}}>Name</th>
