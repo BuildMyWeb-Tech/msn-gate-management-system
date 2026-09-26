@@ -48,95 +48,65 @@ const fmtDate = v => {
 };
 
 // ─── Reference Face Capture Modal ────────────────────────────────────────────
-// Captures a reference selfie when a new patrol session starts.
-// Extracts face descriptor for comparison during checkpoint selfies.
+// Uses <input type="file" capture="user"> — opens native device camera on
+// mobile/PWA without any getUserMedia / permission dance. Works on iOS Safari,
+// Android Chrome, and desktop browsers.
 function FaceCaptureModal({ onCapture, onSkip }) {
-  const [step, setStep]     = useState("idle"); // idle | loading | camera | capturing | processing
-  const [stream, setStream] = useState(null);
-  const [error, setError]   = useState("");
-  const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
+  const [step, setStep]         = useState("idle"); // idle | captured | processing
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [error, setError]       = useState("");
+  const fileInputRef = useRef(null);
+  const canvasRef    = useRef(null);
 
-  const stopStream = useCallback(() => {
-    if (stream) { stream.getTracks().forEach(t => t.stop()); setStream(null); }
-  }, [stream]);
-  useEffect(() => () => stopStream(), [stopStream]);
+  // Revoke object URL on unmount
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, []); // eslint-disable-line
 
-  useEffect(() => {
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-  }, [stream]);
-
-  const openCamera = async () => {
+  const openCamera = () => {
     setError("");
-    setStep("loading");
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        const isInsecure = location.protocol !== "https:" && location.hostname !== "localhost";
-        setError(isInsecure
-          ? "Camera requires HTTPS — open the app via https:// or on localhost"
-          : "Camera not supported on this browser");
-        setStep("idle");
-        return;
-      }
-      // getUserMedia MUST be called before any await — iOS Safari closes the
-      // user-gesture window if an async operation runs first.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      setStream(stream);
-      setStep("camera");
-      // Load face models in background — camera is already open; don't fail camera on model error
-      loadFaceModels().catch(err => console.warn("[FaceCapture] Model load failed:", err.message));
-    } catch (e) {
-      let msg;
-      if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
-        msg = "Camera permission denied — allow in browser settings";
-      else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError")
-        msg = "No camera found on this device";
-      else if (e.name === "NotReadableError" || e.name === "TrackStartError" || e.name === "AbortError")
-        msg = "Camera in use by another app — close it and retry";
-      else if (e.name === "OverconstrainedError" || e.name === "ConstraintNotSatisfiedError")
-        msg = "Camera constraints not supported — try again";
-      else if (e.name === "SecurityError")
-        msg = "Camera blocked by browser security policy";
-      else if (e.name === "TypeError")
-        msg = "Camera not supported on this browser";
-      else
-        msg = `Could not open camera — ${e.message || e.name || "unknown error"}`;
-      setError(msg);
-      setStep("idle");
-    }
+    fileInputRef.current?.click();
   };
 
-  const capture = async () => {
-    const video  = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-    setStep("capturing");
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    stopStream();
-    setStep("processing");
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // reset so same photo can be reselected
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    setStep("captured");
+    setError("");
+  };
 
+  const processCapture = async () => {
+    if (!previewUrl) return;
+    setStep("processing");
+    setError("");
     try {
-      // Ensure models are loaded (they start loading in background when camera opens)
       await loadFaceModels();
+      const img = new Image();
+      img.src = previewUrl;
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+      const canvas = canvasRef.current;
+      canvas.width  = img.naturalWidth  || 640;
+      canvas.height = img.naturalHeight || 480;
+      canvas.getContext("2d").drawImage(img, 0, 0);
       const descriptor = await getFaceDescriptor(canvas);
       if (!descriptor) {
-        setError("No face detected — please try again in good lighting");
-        setStep("idle");
+        setError("No face detected — retake in good lighting, facing the camera");
+        setStep("captured");
       } else {
         onCapture(descriptor);
       }
     } catch {
       setError("Face analysis failed — please try again");
-      setStep("idle");
+      setStep("captured");
     }
+  };
+
+  const retake = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setStep("idle");
+    setError("");
   };
 
   const S = {
@@ -145,18 +115,29 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     title: { fontWeight:700, fontSize:15, color:"var(--text)", textAlign:"center", marginBottom:4 },
     sub: { fontSize:12, color:"var(--text2)", textAlign:"center", marginBottom:16 },
     btn: { width:"100%", padding:"11px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
+    btnGhost: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:6 },
     skip: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" },
-    video: { width:"100%", borderRadius:"var(--radius-sm)", marginBottom:12, background:"#000" },
   };
 
   return (
     <div style={S.overlay}>
       <div style={S.box}>
+        {/* hidden file input — capture="user" opens front camera on mobile/PWA */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          style={{ display:"none" }}
+          onChange={handleFileChange}
+        />
+        <canvas ref={canvasRef} style={{ display:"none" }}/>
+
         <div style={{ textAlign:"center", marginBottom:12 }}>
           <UserCheck size={28} style={{ color:"var(--accent)" }}/>
         </div>
         <div style={S.title}>Face Registration</div>
-        <div style={S.sub}>Take a reference selfie to verify your identity at each patrol point.</div>
+        <div style={S.sub}>Take a selfie to verify your identity at each patrol point.</div>
 
         {error && (
           <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 10px", background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", marginBottom:12, fontSize:12, color:"var(--red)" }}>
@@ -164,25 +145,24 @@ function FaceCaptureModal({ onCapture, onSkip }) {
           </div>
         )}
 
-        {step === "camera" && (
+        {step === "idle" && (
           <>
-            <video ref={videoRef} style={S.video} playsInline muted autoPlay/>
-            <canvas ref={canvasRef} style={{ display:"none" }}/>
-            <button style={S.btn} onClick={capture}>
-              <Camera size={15}/> Capture Face
+            <button style={S.btn} onClick={openCamera}>
+              <Camera size={15}/> Open Camera
             </button>
+            <button style={S.skip} onClick={onSkip}>Skip (no face verification)</button>
           </>
         )}
 
-        {(step === "idle" || step === "loading") && (
+        {step === "captured" && previewUrl && (
           <>
-            <canvas ref={canvasRef} style={{ display:"none" }}/>
-            <button style={S.btn} onClick={openCamera} disabled={step === "loading"}>
-              {step === "loading"
-                ? <><Loader size={15} style={{ animation:"spin 1s linear infinite" }}/> Loading...</>
-                : <><Camera size={15}/> Open Camera</>}
+            <img src={previewUrl} alt="selfie preview" style={{ width:"100%", borderRadius:"var(--radius-sm)", marginBottom:12, objectFit:"cover" }}/>
+            <button style={S.btn} onClick={processCapture}>
+              <UserCheck size={15}/> Use This Photo
             </button>
-            <button style={S.skip} onClick={onSkip}>Skip (no face verification)</button>
+            <button style={S.btnGhost} onClick={openCamera}>
+              <Camera size={14}/> Retake
+            </button>
           </>
         )}
 
@@ -201,14 +181,12 @@ function FaceCaptureModal({ onCapture, onSkip }) {
 function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   const [step, setStep]             = useState("locating"); // locating | found | selfie | verifying | face-checking
   const [foundPoint, setFoundPoint] = useState(null);
-  const [stream, setStream]         = useState(null);
   const [selfieBlob, setSelfieBlob] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [faceStatus, setFaceStatus] = useState(""); // "" | "matched" | "no-match" | "no-face"
   const [gpsProgress, setGpsProgress] = useState(0); // 0-3 (shows Reading n/3)
   const [capturedCoords, setCapturedCoords] = useState(null); // { lat, lng } — temp debug display
-  const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
+  const selfieInputRef    = useRef(null); // hidden file input for selfie
   const capturedCanvasRef = useRef(null); // holds snapshot for face comparison
 
   // Step 1 — take 3 GPS readings, weighted average by accuracy, then validate
@@ -263,73 +241,38 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   }, []); // eslint-disable-line
 
   // Step 2 — Open camera when user clicks "Take Selfie"
-  const openCamera = async () => {
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        const isInsecure = location.protocol !== "https:" && location.hostname !== "localhost";
-        setToast({ type: "error", msg: isInsecure
-          ? "Camera requires HTTPS — open the app via https://"
-          : "Camera not supported on this browser" });
-        onClose();
-        return;
-      }
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      setStream(s);
-      setStep("selfie");
-    } catch (e) {
-      let msg;
-      if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
-        msg = "Camera permission denied — allow in browser settings";
-      else if (e.name === "NotFoundError")
-        msg = "No camera found on this device";
-      else if (e.name === "NotReadableError" || e.name === "TrackStartError")
-        msg = "Camera in use by another app — close it and retry";
-      else
-        msg = `Could not open camera (${e.name || e.message})`;
-      setToast({ type: "error", msg });
-      onClose();
-    }
+  // Uses file input capture="user" — opens native front camera on mobile/PWA.
+  const openCamera = () => {
+    setFaceStatus("");
+    selfieInputRef.current?.click();
   };
 
-  useEffect(() => {
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-  }, [stream]);
+  // Process the photo selected via file input
+  const handleSelfieFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
 
-  const stopStream = useCallback(() => {
-    if (stream) { stream.getTracks().forEach(t => t.stop()); setStream(null); }
-  }, [stream]);
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    setStep("face-checking");
 
-  useEffect(() => () => stopStream(), [stopStream]);
+    // Draw file image onto canvas for face-api
+    const img = new Image();
+    img.src = url;
+    await img.decode().catch(() => {});
 
-  // Capture selfie — runs face verification if session has a reference descriptor
-  const captureSelfie = () => {
-    const video  = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext("2d").drawImage(video, 0, 0);
+    const canvas = document.createElement("canvas");
+    canvas.width  = img.naturalWidth  || 640;
+    canvas.height = img.naturalHeight || 480;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    capturedCanvasRef.current = canvas;
 
-    // Keep a snapshot for face comparison
-    capturedCanvasRef.current = document.createElement("canvas");
-    capturedCanvasRef.current.width  = canvas.width;
-    capturedCanvasRef.current.height = canvas.height;
-    capturedCanvasRef.current.getContext("2d").drawImage(canvas, 0, 0);
-
+    // Convert canvas to blob for upload
     canvas.toBlob(blob => {
       setSelfieBlob(blob);
-      setPreviewUrl(canvas.toDataURL("image/jpeg", 0.85));
-      stopStream();
-
       const refDescriptor = session?.faceDescriptor;
       if (refDescriptor) {
-        setStep("face-checking");
         verifyFace(refDescriptor, blob);
       } else {
         setStep("verifying");
@@ -444,6 +387,16 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={S.box}>
+        {/* hidden file input — capture="user" opens front camera on mobile/PWA */}
+        <input
+          ref={selfieInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          style={{ display:"none" }}
+          onChange={handleSelfieFile}
+        />
+
         <div style={S.title}>Validate Patrol Point</div>
 
         {step === "locating" && (
@@ -462,7 +415,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
           </div>
         )}
 
-        {(step === "found" || step === "selfie" || step === "verifying" || step === "face-checking") && (
+        {(step === "found" || step === "verifying" || step === "face-checking") && (
           <>
             <div style={S.label}>Patrol Point</div>
             <div style={S.pointBox}>
@@ -484,15 +437,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
           </button>
         )}
 
-        {step === "selfie" && (
-          <>
-            <video ref={videoRef} style={S.video} playsInline muted autoPlay />
-            <canvas ref={canvasRef} style={{ display: "none" }} />
-            <button style={S.btn} onClick={captureSelfie}>
-              <Camera size={16} /> Capture
-            </button>
-          </>
-        )}
+        {/* selfie step is handled instantly via file input — no separate video view needed */}
 
         {step === "face-checking" && (
           <div style={{ textAlign: "center", padding: "12px 0" }}>
