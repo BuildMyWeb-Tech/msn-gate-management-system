@@ -400,28 +400,38 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
       const snapshotCanvas = capturedCanvasRef.current;
       if (!snapshotCanvas) { setStep("verifying"); submitCheckpoint(blob); return; }
 
+      // Ensure models are loaded — critical if verifyFace is called before
+      // FaceCaptureModal.processCapture finishes loading them
+      await loadFaceModels();
+
       const selfieDescriptor = await getFaceDescriptor(snapshotCanvas);
       if (!selfieDescriptor) {
         setFaceStatus("no-face");
-        return; // stays on face-checking step with error shown
+        return;
       }
 
-      const distance = faceapi.euclideanDistance(refDescriptor, selfieDescriptor);
+      // Ensure both descriptors are Float32Array — React state preserves typed arrays
+      // but we convert explicitly for safety
+      const ref     = refDescriptor instanceof Float32Array ? refDescriptor : new Float32Array(Object.values(refDescriptor));
+      const selfie  = selfieDescriptor instanceof Float32Array ? selfieDescriptor : new Float32Array(Object.values(selfieDescriptor));
+      const distance = faceapi.euclideanDistance(ref, selfie);
+
+      // distance < 0.5 = strong match, 0.5–0.6 = likely same person, > 0.6 = different
       if (distance < 0.6) {
-        setFaceStatus("matched");
-        setTimeout(() => { setStep("verifying"); submitCheckpoint(blob); }, 800);
+        setFaceStatus(`matched:${distance.toFixed(3)}`);
+        setTimeout(() => { setStep("verifying"); submitCheckpoint(blob); }, 1000);
       } else {
-        setFaceStatus("no-match");
-        // Allow retry after 2 seconds by going back to selfie step
+        setFaceStatus(`no-match:${distance.toFixed(3)}`);
         setTimeout(() => {
           setFaceStatus("");
           setSelfieBlob(null);
           setPreviewUrl(null);
           openCamera();
-        }, 2500);
+        }, 3000);
       }
-    } catch {
-      // On error, proceed without blocking
+    } catch (err) {
+      console.warn("[verifyFace] error:", err);
+      // On unexpected error, proceed without blocking the checkpoint
       setStep("verifying");
       submitCheckpoint(blob);
     }
@@ -563,7 +573,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
         {step === "face-checking" && (
           <div style={{ textAlign: "center", padding: "12px 0" }}>
             {previewUrl && (
-              <img src={previewUrl} alt="selfie" style={{ width: "100%", borderRadius: "var(--radius-sm)", marginBottom: 12 }} />
+              <img src={previewUrl} alt="selfie" style={{ width: "100%", borderRadius: "var(--radius-sm)", marginBottom: 12, objectFit: "cover" }} />
             )}
             {!faceStatus && (
               <>
@@ -571,26 +581,41 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
                 <p style={{ color: "var(--text2)", fontSize: 13 }}>Verifying face...</p>
               </>
             )}
-            {faceStatus === "matched" && (
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, color:"var(--green)", fontWeight:600, fontSize:13 }}>
-                <UserCheck size={18}/> Face matched — logging checkpoint...
+            {faceStatus.startsWith("matched") && (
+              <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, color:"var(--green)", fontWeight:700, fontSize:14, marginBottom:4 }}>
+                  <UserCheck size={18}/> Face Verified
+                </div>
+                <div style={{ fontSize:11, color:"var(--text2)", fontFamily:"monospace" }}>
+                  Similarity: {faceStatus.split(":")[1]} (threshold &lt; 0.6)
+                </div>
+                <div style={{ fontSize:12, color:"var(--text2)", marginTop:4 }}>Logging checkpoint...</div>
               </div>
             )}
             {faceStatus === "no-face" && (
-              <div style={{ color:"var(--red)", fontSize:13 }}>
-                <AlertTriangle size={16} style={{ marginRight:6 }}/>
-                No face detected. Please try again in better lighting.
-                <br/>
-                <button style={{ marginTop:10, padding:"7px 16px", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}
+              <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, color:"var(--red)", fontWeight:600, fontSize:13, marginBottom:8 }}>
+                  <AlertTriangle size={15}/> No face detected
+                </div>
+                <p style={{ fontSize:12, color:"var(--text2)", marginBottom:10 }}>
+                  Ensure your face is clearly visible and well lit.
+                </p>
+                <button
+                  style={{ padding:"7px 16px", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}
                   onClick={() => { setFaceStatus(""); setSelfieBlob(null); setPreviewUrl(null); openCamera(); }}>
                   Retry
                 </button>
               </div>
             )}
-            {faceStatus === "no-match" && (
-              <div style={{ color:"var(--red)", fontSize:13 }}>
-                <AlertTriangle size={16} style={{ marginRight:6 }}/>
-                Face does not match. Retrying camera...
+            {faceStatus.startsWith("no-match") && (
+              <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, color:"var(--red)", fontWeight:600, fontSize:13, marginBottom:4 }}>
+                  <AlertTriangle size={15}/> Face does not match
+                </div>
+                <div style={{ fontSize:11, color:"var(--text2)", fontFamily:"monospace", marginBottom:6 }}>
+                  Distance: {faceStatus.split(":")[1]} (must be &lt; 0.6)
+                </div>
+                <p style={{ fontSize:12, color:"var(--text2)" }}>Retrying camera in 3 seconds...</p>
               </div>
             )}
           </div>
