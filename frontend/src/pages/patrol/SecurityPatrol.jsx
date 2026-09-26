@@ -82,31 +82,37 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         return;
       }
       // getUserMedia MUST be called before any await — iOS Safari closes the
-      // user-gesture window if an async operation (like model download) runs first.
-      // Start camera and model load in parallel so both happen simultaneously.
-      const cameraPromise = navigator.mediaDevices.getUserMedia({
+      // user-gesture window if an async operation runs first.
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
-      const [s] = await Promise.all([cameraPromise, loadFaceModels()]);
-      setStream(s);
+      setStream(stream);
       setStep("camera");
+      // Load face models in background — camera is already open; don't fail camera on model error
+      loadFaceModels().catch(err => console.warn("[FaceCapture] Model load failed:", err.message));
     } catch (e) {
       let msg;
       if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
         msg = "Camera permission denied — allow in browser settings";
       else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError")
         msg = "No camera found on this device";
-      else if (e.name === "NotReadableError" || e.name === "TrackStartError")
+      else if (e.name === "NotReadableError" || e.name === "TrackStartError" || e.name === "AbortError")
         msg = "Camera in use by another app — close it and retry";
+      else if (e.name === "OverconstrainedError" || e.name === "ConstraintNotSatisfiedError")
+        msg = "Camera constraints not supported — try again";
+      else if (e.name === "SecurityError")
+        msg = "Camera blocked by browser security policy";
+      else if (e.name === "TypeError")
+        msg = "Camera not supported on this browser";
       else
-        msg = `Could not open camera (${e.name || e.message})`;
+        msg = `Could not open camera — ${e.message || e.name || "unknown error"}`;
       setError(msg);
       setStep("idle");
     }
   };
 
-  const capture = () => {
+  const capture = async () => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
@@ -117,14 +123,20 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     stopStream();
     setStep("processing");
 
-    getFaceDescriptor(canvas).then(descriptor => {
+    try {
+      // Ensure models are loaded (they start loading in background when camera opens)
+      await loadFaceModels();
+      const descriptor = await getFaceDescriptor(canvas);
       if (!descriptor) {
         setError("No face detected — please try again in good lighting");
         setStep("idle");
       } else {
         onCapture(descriptor);
       }
-    });
+    } catch {
+      setError("Face analysis failed — please try again");
+      setStep("idle");
+    }
   };
 
   const S = {
