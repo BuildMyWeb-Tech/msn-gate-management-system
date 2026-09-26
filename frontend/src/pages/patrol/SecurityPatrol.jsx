@@ -368,7 +368,7 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
           selfieImage: base64,
         });
         if (res.success) {
-          onSuccess(res.data);
+          onSuccess({ ...res.data, _gps: capturedCoords });
         } else {
           setToast({ type: "error", msg: res.message || "Checkpoint log failed" });
           onClose();
@@ -537,6 +537,7 @@ function PatrolSession({ session, onBack, setToast }) {
   const [loading, setLoading]         = useState(true);
   const [showValidate, setShowValidate] = useState(false);
   const [ending, setEnding]           = useState(false);
+  const [lastGps, setLastGps]         = useState(null); // { lat, lng } — temp debug display
 
   const loadCheckpoints = useCallback(async () => {
     setLoading(true);
@@ -551,7 +552,7 @@ function PatrolSession({ session, onBack, setToast }) {
 
   const handleCheckpointSuccess = (newRow) => {
     setShowValidate(false);
-    // Reload checkpoints to get server-assigned SlNo and timestamp
+    if (newRow?._gps) setLastGps(newRow._gps);
     loadCheckpoints();
     setToast({ type: "success", msg: "Patrol point validated successfully" });
   };
@@ -622,7 +623,7 @@ function PatrolSession({ session, onBack, setToast }) {
 
         {/* Validate button */}
         {!session.endTime && (
-          <div style={{ padding: "14px 16px" }}>
+          <div style={{ padding: "14px 16px 0" }}>
             <button
               onClick={() => setShowValidate(true)}
               style={{
@@ -634,6 +635,16 @@ function PatrolSession({ session, onBack, setToast }) {
               }}>
               <MapPin size={15} /> Validate Patrol Point
             </button>
+          </div>
+        )}
+
+        {/* GPS coordinate label — temporary, for testing only */}
+        {lastGps && (
+          <div style={{ margin: "10px 16px 0", padding: "8px 12px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "var(--radius-xs)", display: "flex", alignItems: "center", gap: 6 }}>
+            <MapPin size={12} style={{ color: "var(--accent)", flexShrink: 0 }}/>
+            <span style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text2)" }}>
+              GPS sent: {lastGps.lat}, {lastGps.lng}
+            </span>
           </div>
         )}
 
