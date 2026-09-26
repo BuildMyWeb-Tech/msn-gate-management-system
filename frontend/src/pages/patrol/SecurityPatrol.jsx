@@ -186,7 +186,7 @@ function FaceCaptureModal({ onCapture, onSkip }) {
 }
 
 // ─── Validate Patrol Point Modal ─────────────────────────────────────────────
-function ValidateModal({ session, onClose, onSuccess, setToast }) {
+function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   const [step, setStep]             = useState("locating"); // locating | found | selfie | verifying | face-checking
   const [foundPoint, setFoundPoint] = useState(null);
   const [stream, setStream]         = useState(null);
@@ -222,17 +222,18 @@ function ValidateModal({ session, onClose, onSuccess, setToast }) {
             const avgLng = readings.reduce((s, r) => s + r.lng / r.acc, 0) / totalWeight;
             const coords = { lat: avgLat.toFixed(6), lng: avgLng.toFixed(6) };
             setCapturedCoords(coords);
+            onGpsRead?.(coords); // lift coords to parent immediately — before SP call
             try {
               const res = await validatePatrolPoint(avgLat, avgLng);
               if (res.success && res.data) {
                 setFoundPoint(res.data);
                 setStep("found");
               } else {
-                setToast({ type: "error", msg: res.message || "No patrol point found within 6 metres" });
+                setToast({ type: "error", msg: `No patrol point found within 6 metres (GPS: ${coords.lat}, ${coords.lng})` });
                 onClose();
               }
             } catch (err) {
-              setToast({ type: "error", msg: err.response?.data?.message || "Location validation failed" });
+              setToast({ type: "error", msg: `${err.response?.data?.message || "Location validation failed"} (GPS: ${coords.lat}, ${coords.lng})` });
               onClose();
             }
           }
@@ -588,6 +589,7 @@ function PatrolSession({ session, onBack, setToast }) {
           session={session}
           onClose={() => setShowValidate(false)}
           onSuccess={handleCheckpointSuccess}
+          onGpsRead={coords => setLastGps(coords)}
           setToast={setToast}
         />
       )}
