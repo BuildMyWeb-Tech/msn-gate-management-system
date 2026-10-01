@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Detection Test</title>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  body { font-family: sans-serif; background: #111; color: #eee; padding: 20px; max-width: 480px; margin: 0 auto; }
+  button { background: #f59e0b; color: #000; border: none; padding: 12px 20px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; margin-bottom: 10px; }
+  button:disabled { background: #555; color: #999; cursor: default; }
+  #status { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 13px; min-height: 40px; }
+  #preview { width: 100%; border-radius: 8px; margin: 10px 0; display: none; }
+  .ok  { color: #4ade80; }
+  .err { color: #f87171; }
+  .info { color: #94a3b8; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<h2>Face-API Test</h2>
+
+<div id="status" class="info">Click "Load Models" to begin.</div>
+
+<button id="btnLoad">1. Load Face Models</button>
+<input type="file" id="fileInput" accept="image/*" capture="user">
+<button id="btnCapture" disabled>2. Take / Select Photo</button>
+<img id="preview">
+<button id="btnDetect" disabled>3. Detect Face</button>
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+const MODEL_URL = '/models';
+let modelsLoaded = false;
+
+const log = (msg, cls='info') => {
+  const el = document.getElementById('status');
+  el.innerHTML += `<div class="${cls}">${msg}</div>`;
+};
+const clear = () => { document.getElementById('status').innerHTML = ''; };
+
+document.getElementById('btnLoad').onclick = async () => {
+  clear();
+  log('Loading TinyFaceDetector…');
+  const t = Date.now();
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+    modelsLoaded = true;
+    log(`✓ All 3 models loaded in ${((Date.now()-t)/1000).toFixed(1)}s`, 'ok');
+    document.getElementById('btnCapture').disabled = false;
+  } catch(e) {
+    log('✗ Model load failed: ' + e.message, 'err');
+  }
+};
+
+document.getElementById('btnCapture').onclick = () => {
+  document.getElementById('fileInput').click();
+};
+
+document.getElementById('fileInput').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = document.getElementById('preview');
+  img.src = url;
+  img.style.display = 'block';
+  e.target.value = '';
+  document.getElementById('btnDetect').disabled = false;
+  log('Photo selected. Click "Detect Face".', 'info');
+};
+
+document.getElementById('btnDetect').onclick = async () => {
+  clear();
+  if (!modelsLoaded) { log('Models not loaded!', 'err'); return; }
+  const img = document.getElementById('preview');
+  const canvas = document.getElementById('canvas');
+  canvas.width  = img.naturalWidth  || 640;
+  canvas.height = img.naturalHeight || 480;
+  canvas.getContext('2d').drawImage(img, 0, 0);
+  log('Running face detection…');
+  try {
+    const t = Date.now();
+    const detection = await faceapi
+      .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+    const ms = Date.now() - t;
+    if (!detection) {
+      log('✗ No face detected in image', 'err');
+      log('Tip: ensure face is clearly visible and well-lit', 'info');
+    } else {
+      log(`✓ Face detected in ${ms}ms`, 'ok');
+      log(`Descriptor length: ${detection.descriptor.length} (expected 128)`, 'ok');
+      log(`Detection score: ${detection.detection.score.toFixed(3)}`, 'ok');
+      log(`Box: ${JSON.stringify({
+        x: Math.round(detection.detection.box.x),
+        y: Math.round(detection.detection.box.y),
+        w: Math.round(detection.detection.box.width),
+        h: Math.round(detection.detection.box.height),
+      })}`, 'info');
+    }
+  } catch(e) {
+    log('✗ Detection error: ' + e.message, 'err');
+  }
+};
+</script>
+</body>
+</html>

@@ -54,19 +54,25 @@ const fmtDate = v => {
 // Mobile/PWA: <input capture="user"> opens native front camera (no getUserMedia).
 // Desktop: getUserMedia live video preview → capture frame.
 function FaceCaptureModal({ onCapture, onSkip }) {
-  const [step, setStep]         = useState("idle"); // idle | loading | camera | captured | processing
-  const [stream, setStream]     = useState(null);
+  const [step, setStep]           = useState("idle"); // idle | loading | camera | captured | processing
+  const [stream, setStream]       = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [error, setError]       = useState("");
+  const [error, setError]         = useState(null); // null | { type: "model"|"face"|"camera", msg }
+  const [procMsg, setProcMsg]     = useState("");   // shown while processing
   const fileInputRef = useRef(null);
   const videoRef     = useRef(null);
   const canvasRef    = useRef(null);
+
+  // Start downloading face models in background the moment the modal opens
+  // so they are ready (or nearly ready) by the time the user clicks "Use This Photo"
+  useEffect(() => {
+    loadFaceModels().catch(() => {}); // background pre-load; errors handled in processCapture
+  }, []);
 
   const stopStream = useCallback(() => {
     if (stream) { stream.getTracks().forEach(t => t.stop()); setStream(null); }
   }, [stream]);
   useEffect(() => () => stopStream(), [stopStream]);
-
   useEffect(() => {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
@@ -75,13 +81,11 @@ function FaceCaptureModal({ onCapture, onSkip }) {
   }, [stream]);
 
   const openCamera = async () => {
-    setError("");
+    setError(null);
     if (isMobile) {
-      // Mobile/PWA: trigger native camera via file input — no getUserMedia needed
       fileInputRef.current?.click();
       return;
     }
-    // Desktop: getUserMedia live video
     setStep("loading");
     try {
       const s = await navigator.mediaDevices.getUserMedia({
@@ -90,7 +94,6 @@ function FaceCaptureModal({ onCapture, onSkip }) {
       });
       setStream(s);
       setStep("camera");
-      loadFaceModels().catch(err => console.warn("[FaceCapture] Model load:", err.message));
     } catch (e) {
       let msg;
       if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError")
@@ -101,7 +104,7 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         msg = "Camera in use by another app — close it and retry";
       else
         msg = `Could not open camera — ${e.message || e.name}`;
-      setError(msg);
+      setError({ type: "camera", msg });
       setStep("idle");
     }
   };
@@ -111,10 +114,10 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(file));
     setStep("captured");
-    setError("");
+    setError(null);
   };
 
   // Desktop: capture frame from live video
@@ -128,16 +131,31 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     stopStream();
     setPreviewUrl(canvas.toDataURL("image/jpeg", 0.85));
     setStep("captured");
+    setError(null);
   };
 
   const processCapture = async () => {
     if (!previewUrl) return;
     setStep("processing");
-    setError("");
+    setError(null);
+
+    // Step 1 — ensure AI models are loaded
+    setProcMsg("Loading face AI models…");
     try {
       await loadFaceModels();
-      const canvas = canvasRef.current;
-      // For mobile blob URLs: load image into canvas; for desktop: canvas already has the frame
+    } catch {
+      setError({
+        type: "model",
+        msg: "Face AI models failed to download — check your internet connection.",
+      });
+      setStep("captured");
+      return;
+    }
+
+    // Step 2 — draw image to canvas (mobile blob) or reuse existing canvas (desktop)
+    setProcMsg("Detecting face…");
+    const canvas = canvasRef.current;
+    try {
       if (previewUrl.startsWith("blob:")) {
         const img = new Image();
         img.src = previewUrl;
@@ -146,29 +164,35 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         canvas.height = img.naturalHeight || 480;
         canvas.getContext("2d").drawImage(img, 0, 0);
       }
-      const descriptor = await getFaceDescriptor(canvas);
-      if (!descriptor) {
-        setError("No face detected — retake in good lighting, facing the camera");
-        setStep("captured");
-      } else {
-        onCapture(descriptor);
-      }
     } catch {
-      setError("Face analysis failed — please try again");
+      setError({ type: "face", msg: "Could not read the photo — please retake." });
       setStep("captured");
+      return;
+    }
+
+    // Step 3 — run face detection
+    const descriptor = await getFaceDescriptor(canvas);
+    if (!descriptor) {
+      setError({
+        type: "face",
+        msg: "No face detected — look directly at the camera in good lighting and try again.",
+      });
+      setStep("captured");
+    } else {
+      onCapture(descriptor);
     }
   };
 
   const retake = () => {
     if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
+    setError(null);
     setStep("idle");
-    setError("");
     openCamera();
   };
 
   const S = {
-    overlay: { position:"fixed", inset:0, zIndex:800, background:"rgba(0,0,0,0.8)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
+    overlay: { position:"fixed", inset:0, zIndex:800, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
     box: { background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"min(380px,95vw)", padding:20 },
     title: { fontWeight:700, fontSize:15, color:"var(--text)", textAlign:"center", marginBottom:4 },
     sub: { fontSize:12, color:"var(--text2)", textAlign:"center", marginBottom:16 },
@@ -181,7 +205,7 @@ function FaceCaptureModal({ onCapture, onSkip }) {
   return (
     <div style={S.overlay}>
       <div style={S.box}>
-        {/* hidden file input — used on mobile/PWA only; capture="user" = front camera */}
+        {/* Mobile/PWA: capture="user" opens front-facing camera */}
         <input ref={fileInputRef} type="file" accept="image/*" capture="user"
           style={{ display:"none" }} onChange={handleFileChange} />
         <canvas ref={canvasRef} style={{ display:"none" }}/>
@@ -192,9 +216,22 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         <div style={S.title}>Face Registration</div>
         <div style={S.sub}>Take a selfie to verify your identity at each patrol point.</div>
 
+        {/* Error banner — different actions based on error type */}
         {error && (
-          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 10px", background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", marginBottom:12, fontSize:12, color:"var(--red)" }}>
-            <AlertTriangle size={13}/> {error}
+          <div style={{ padding:"10px 12px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", marginBottom:12 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--red)", marginBottom: error.type === "model" ? 8 : 0 }}>
+              <AlertTriangle size={13}/> {error.msg}
+            </div>
+            {error.type === "model" && (
+              <div style={{ display:"flex", gap:8, marginTop:2 }}>
+                <button onClick={processCapture} style={{ flex:1, padding:"6px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                  Retry
+                </button>
+                <button onClick={onSkip} style={{ flex:1, padding:"6px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:11, cursor:"pointer" }}>
+                  Skip Verification
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -218,23 +255,38 @@ function FaceCaptureModal({ onCapture, onSkip }) {
           </>
         )}
 
-        {step === "captured" && previewUrl && (
+        {step === "captured" && previewUrl && !error?.type === "model" && (
           <>
             <img src={previewUrl} alt="selfie preview"
               style={{ width:"100%", borderRadius:"var(--radius-sm)", marginBottom:12, objectFit:"cover", aspectRatio:"4/3" }}/>
-            <button style={S.btn} onClick={processCapture}>
-              <UserCheck size={15}/> Use This Photo
-            </button>
-            <button style={S.btnGhost} onClick={retake}>
-              <Camera size={14}/> Retake
-            </button>
+            {!error && (
+              <>
+                <button style={S.btn} onClick={processCapture}>
+                  <UserCheck size={15}/> Use This Photo
+                </button>
+                <button style={S.btnGhost} onClick={retake}>
+                  <Camera size={14}/> Retake
+                </button>
+              </>
+            )}
+            {error && error.type !== "model" && (
+              <>
+                <button style={S.btn} onClick={retake}>
+                  <Camera size={14}/> Retake Photo
+                </button>
+                <button style={S.skip} onClick={onSkip}>Skip (no face verification)</button>
+              </>
+            )}
           </>
         )}
 
         {step === "processing" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
             <Loader size={24} style={{ color:"var(--accent)", animation:"spin 1s linear infinite", marginBottom:8 }}/>
-            <p style={{ color:"var(--text2)", fontSize:13 }}>Detecting face...</p>
+            <p style={{ color:"var(--text2)", fontSize:13 }}>{procMsg || "Processing…"}</p>
+            {procMsg === "Loading face AI models…" && (
+              <p style={{ color:"var(--text3)", fontSize:11, marginTop:4 }}>First time only — may take a moment</p>
+            )}
           </div>
         )}
       </div>
