@@ -213,9 +213,9 @@ export default function Securities() {
                 <td><PhotoStamp photo={row.photo} name={row.sname}/></td>
                 <td style={{fontWeight:600}}>{row.sname||"—"}</td>
                 <td>{row.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</td>
-                <td className="td-muted">{row.scode||"—"}</td>
+                <td className="td-muted" style={{ fontWeight:700, color:"var(--text)" }}>{row.scode||"—"}</td>
                 <td>{row.gender||"—"}</td>
-                <td className="td-muted">{row.smobile1||"—"}</td>
+                <td className="td-muted" style={{ fontWeight:700, color:"var(--text)" }}>{row.smobile1||"—"}</td>
                 <td><div style={{display:"flex",gap:4}}>
                   <button className="btn btn-ghost btn-xs" onClick={()=>openEdit(row)}><Pencil size={11}/> Edit</button>
                   <button className="btn btn-ghost btn-xs" onClick={()=>setViewRow(row)}><Eye size={11}/> View</button>

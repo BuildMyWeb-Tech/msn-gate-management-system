@@ -3,44 +3,102 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Face Detection Test</title>
+<title>Face Recognition Test</title>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <style>
-  body { font-family: sans-serif; background: #111; color: #eee; padding: 20px; max-width: 480px; margin: 0 auto; }
-  button { background: #f59e0b; color: #000; border: none; padding: 12px 20px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; margin-bottom: 10px; }
-  button:disabled { background: #555; color: #999; cursor: default; }
-  #status { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 13px; min-height: 40px; }
-  #preview { width: 100%; border-radius: 8px; margin: 10px 0; display: none; }
+  body { font-family: sans-serif; background: #111; color: #eee; padding: 20px; max-width: 520px; margin: 0 auto; }
+  h2 { margin-bottom: 4px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  button { background: #f59e0b; color: #000; border: none; padding: 11px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; width: 100%; margin-bottom: 10px; }
+  button:disabled { background: #374151; color: #6b7280; cursor: default; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .card-title { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+  .photo-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .photo-slot { flex: 1; text-align: center; }
+  .photo-slot img { width: 100%; border-radius: 8px; display: block; border: 2px solid #334155; background: #0f172a; min-height: 120px; object-fit: cover; }
+  .photo-slot .label { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .pick-btn { background: #1e3a5f; color: #93c5fd; border: 1px solid #1d4ed8; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 6px; }
+  .pick-btn:disabled { background: #1f2937; color: #4b5563; border-color: #374151; cursor: default; }
+  #status { border-radius: 10px; padding: 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.7; }
+  .result-box { border-radius: 10px; padding: 16px; margin-bottom: 14px; text-align: center; }
   .ok  { color: #4ade80; }
   .err { color: #f87171; }
+  .warn { color: #fbbf24; }
   .info { color: #94a3b8; }
+  .match { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); }
+  .nomatch { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); }
+  .pending { background: #1e293b; border: 1px solid #334155; }
+  .big { font-size: 28px; font-weight: 800; }
+  .dist-label { font-size: 12px; color: #94a3b8; margin-top: 4px; }
   input[type=file] { display: none; }
 </style>
 </head>
 <body>
-<h2>Face-API Test</h2>
+<h2>Face Recognition Test</h2>
+<p class="sub">Step-by-step: load models → pick 2 photos → compare</p>
 
-<div id="status" class="info">Click "Load Models" to begin.</div>
+<!-- Step 1 -->
+<div class="card">
+  <div class="card-title">Step 1 — Load Models</div>
+  <button id="btnLoad">Load Face Models</button>
+  <div id="loadStatus" class="info" style="font-size:13px;min-height:18px;"></div>
+</div>
 
-<button id="btnLoad">1. Load Face Models</button>
-<input type="file" id="fileInput" accept="image/*" capture="user">
-<button id="btnCapture" disabled>2. Take / Select Photo</button>
-<img id="preview">
-<button id="btnDetect" disabled>3. Detect Face</button>
-<canvas id="canvas" style="display:none"></canvas>
+<!-- Step 2 -->
+<div class="card">
+  <div class="card-title">Step 2 — Select Two Photos</div>
+  <div class="photo-row">
+    <div class="photo-slot">
+      <img id="img1" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+      <div class="label">Photo 1 — Reference (registered face)</div>
+      <button class="pick-btn" id="btnPick1" disabled>Pick Photo 1</button>
+    </div>
+    <div class="photo-slot">
+      <img id="img2" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+      <div class="label">Photo 2 — Selfie (test face)</div>
+      <button class="pick-btn" id="btnPick2" disabled>Pick Photo 2</button>
+    </div>
+  </div>
+  <input type="file" id="file1" accept="image/*">
+  <input type="file" id="file2" accept="image/*">
+</div>
+
+<!-- Step 3 -->
+<div class="card">
+  <div class="card-title">Step 3 — Compare</div>
+  <button id="btnCompare" disabled>Compare Faces</button>
+</div>
+
+<!-- Result -->
+<div class="result-box pending" id="resultBox">
+  <div class="big" id="resultIcon">—</div>
+  <div id="resultText" style="font-size:14px;color:#94a3b8;margin-top:6px;">Waiting for comparison…</div>
+  <div class="dist-label" id="distText"></div>
+</div>
+
+<!-- Log -->
+<div id="status" class="pending"></div>
+
+<canvas id="c1" style="display:none"></canvas>
+<canvas id="c2" style="display:none"></canvas>
 
 <script>
 const MODEL_URL = '/models';
 let modelsLoaded = false;
+let desc1 = null, desc2 = null;
 
 const log = (msg, cls='info') => {
   const el = document.getElementById('status');
-  el.innerHTML += `<div class="${cls}">${msg}</div>`;
+  el.innerHTML += `<span class="${cls}">${msg}</span><br>`;
 };
-const clear = () => { document.getElementById('status').innerHTML = ''; };
+const clearLog = () => { document.getElementById('status').innerHTML = ''; };
 
+// Step 1
 document.getElementById('btnLoad').onclick = async () => {
-  clear();
+  clearLog();
+  const btn = document.getElementById('btnLoad');
+  btn.disabled = true;
+  document.getElementById('loadStatus').textContent = 'Loading…';
   log('Loading TinyFaceDetector…');
   const t = Date.now();
   try {
@@ -50,61 +108,88 @@ document.getElementById('btnLoad').onclick = async () => {
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
     modelsLoaded = true;
-    log(`✓ All 3 models loaded in ${((Date.now()-t)/1000).toFixed(1)}s`, 'ok');
-    document.getElementById('btnCapture').disabled = false;
+    const sec = ((Date.now()-t)/1000).toFixed(1);
+    document.getElementById('loadStatus').innerHTML = `<span class="ok">✓ All 3 models loaded in ${sec}s</span>`;
+    log(`✓ Models ready (${sec}s)`, 'ok');
+    document.getElementById('btnPick1').disabled = false;
+    document.getElementById('btnPick2').disabled = false;
+    btn.textContent = 'Reload Models';
+    btn.disabled = false;
   } catch(e) {
+    document.getElementById('loadStatus').innerHTML = `<span class="err">✗ ${e.message}</span>`;
     log('✗ Model load failed: ' + e.message, 'err');
+    btn.disabled = false;
   }
 };
 
-document.getElementById('btnCapture').onclick = () => {
-  document.getElementById('fileInput').click();
-};
+// Photo pickers
+function setupPicker(btnId, fileId, imgId, slot) {
+  document.getElementById(btnId).onclick = () => document.getElementById(fileId).click();
+  document.getElementById(fileId).onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = document.getElementById(imgId);
+    img.src = url;
+    e.target.value = '';
+    // get descriptor
+    log(`Processing Photo ${slot}…`);
+    const desc = await getDesc(url, slot === 1 ? 'c1' : 'c2');
+    if (slot === 1) desc1 = desc; else desc2 = desc;
+    if (desc) {
+      log(`✓ Photo ${slot}: face detected (descriptor ready)`, 'ok');
+    } else {
+      log(`✗ Photo ${slot}: no face detected — try a clearer photo`, 'err');
+    }
+    if (desc1 !== undefined && desc2 !== undefined) {
+      document.getElementById('btnCompare').disabled = !(desc1 && desc2);
+    }
+  };
+}
+setupPicker('btnPick1','file1','img1',1);
+setupPicker('btnPick2','file2','img2',2);
 
-document.getElementById('fileInput').onchange = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  const img = document.getElementById('preview');
+async function getDesc(url, canvasId) {
+  if (!modelsLoaded) return null;
+  const img = new Image();
   img.src = url;
-  img.style.display = 'block';
-  e.target.value = '';
-  document.getElementById('btnDetect').disabled = false;
-  log('Photo selected. Click "Detect Face".', 'info');
-};
-
-document.getElementById('btnDetect').onclick = async () => {
-  clear();
-  if (!modelsLoaded) { log('Models not loaded!', 'err'); return; }
-  const img = document.getElementById('preview');
-  const canvas = document.getElementById('canvas');
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+  const canvas = document.getElementById(canvasId);
   canvas.width  = img.naturalWidth  || 640;
   canvas.height = img.naturalHeight || 480;
   canvas.getContext('2d').drawImage(img, 0, 0);
-  log('Running face detection…');
   try {
-    const t = Date.now();
     const detection = await faceapi
       .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
       .withFaceLandmarks(true)
       .withFaceDescriptor();
-    const ms = Date.now() - t;
-    if (!detection) {
-      log('✗ No face detected in image', 'err');
-      log('Tip: ensure face is clearly visible and well-lit', 'info');
-    } else {
-      log(`✓ Face detected in ${ms}ms`, 'ok');
-      log(`Descriptor length: ${detection.descriptor.length} (expected 128)`, 'ok');
-      log(`Detection score: ${detection.detection.score.toFixed(3)}`, 'ok');
-      log(`Box: ${JSON.stringify({
-        x: Math.round(detection.detection.box.x),
-        y: Math.round(detection.detection.box.y),
-        w: Math.round(detection.detection.box.width),
-        h: Math.round(detection.detection.box.height),
-      })}`, 'info');
-    }
-  } catch(e) {
-    log('✗ Detection error: ' + e.message, 'err');
+    return detection ? detection.descriptor : null;
+  } catch { return null; }
+}
+
+// Step 3 — Compare
+document.getElementById('btnCompare').onclick = () => {
+  if (!desc1 || !desc2) return;
+  const r1 = desc1 instanceof Float32Array ? desc1 : new Float32Array(Object.values(desc1));
+  const r2 = desc2 instanceof Float32Array ? desc2 : new Float32Array(Object.values(desc2));
+  const dist = faceapi.euclideanDistance(r1, r2);
+
+  const box   = document.getElementById('resultBox');
+  const icon  = document.getElementById('resultIcon');
+  const text  = document.getElementById('resultText');
+  const distEl = document.getElementById('distText');
+
+  distEl.textContent = `Distance: ${dist.toFixed(4)}  |  Threshold: < 0.6 = match`;
+
+  if (dist < 0.6) {
+    box.className = 'result-box match';
+    icon.textContent = '✅ MATCH';
+    text.innerHTML = `<span class="ok">Same person — distance ${dist.toFixed(3)} is below threshold 0.6</span>`;
+    log(`✓ MATCH  distance=${dist.toFixed(4)}`, 'ok');
+  } else {
+    box.className = 'result-box nomatch';
+    icon.textContent = '❌ NO MATCH';
+    text.innerHTML = `<span class="err">Different person — distance ${dist.toFixed(3)} exceeds threshold 0.6</span>`;
+    log(`✗ NO MATCH  distance=${dist.toFixed(4)}`, 'err');
   }
 };
 </script>
