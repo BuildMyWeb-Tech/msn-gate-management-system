@@ -203,15 +203,8 @@ function FaceCaptureModal({ onCapture, onSkip }) {
             {/* Live camera view with face-ring overlay */}
             <div style={{ position:"relative", background:"#000", borderRadius:"var(--radius-sm)", overflow:"hidden", marginBottom:12, aspectRatio:"4/3" }}>
               <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
-              {/* Oval face ring — green when detected */}
-              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-                <div style={{
-                  width:130, height:160, borderRadius:"50%",
-                  border:`3px solid ${faceDetected ? "#22c55e" : "#64748b"}`,
-                  transition:"border-color 0.3s, box-shadow 0.3s",
-                  boxShadow: faceDetected ? "0 0 18px rgba(34,197,94,0.5)" : "none",
-                }}/>
-              </div>
+              {/* Oval face ring — fills 80% of frame, green when detected */}
+              <div style={{ position:"absolute", left:"10%", right:"10%", top:"8%", bottom:"8%", borderRadius:"50%", border:`3px solid ${faceDetected ? "#22c55e" : "#475569"}`, transition:"border-color 0.3s, box-shadow 0.3s", boxShadow: faceDetected ? "0 0 20px rgba(34,197,94,0.55)" : "none", pointerEvents:"none" }}/>
               {/* Status badge */}
               <div style={{ position:"absolute", bottom:8, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
                 <span style={{
@@ -552,14 +545,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
             {/* Live camera with face-ring overlay */}
             <div style={{ position:"relative", background:"#000", borderRadius:"var(--radius-sm)", overflow:"hidden", marginBottom:12, aspectRatio:"4/3" }}>
               <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
-              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-                <div style={{
-                  width:130, height:160, borderRadius:"50%",
-                  border:`3px solid ${faceInFrame ? "#22c55e" : "#64748b"}`,
-                  transition:"border-color 0.3s, box-shadow 0.3s",
-                  boxShadow: faceInFrame ? "0 0 18px rgba(34,197,94,0.5)" : "none",
-                }}/>
-              </div>
+              <div style={{ position:"absolute", left:"10%", right:"10%", top:"8%", bottom:"8%", borderRadius:"50%", border:`3px solid ${faceInFrame ? "#22c55e" : "#475569"}`, transition:"border-color 0.3s, box-shadow 0.3s", boxShadow: faceInFrame ? "0 0 20px rgba(34,197,94,0.55)" : "none", pointerEvents:"none" }}/>
               <div style={{ position:"absolute", bottom:8, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
                 <span style={{
                   display:"inline-flex", alignItems:"center", gap:5,
