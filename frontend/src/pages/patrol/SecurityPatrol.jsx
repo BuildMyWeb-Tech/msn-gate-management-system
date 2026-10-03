@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import * as faceapi from "face-api.js";
 import { useAuth } from "../../context/AuthContext";
+import api from "../../services/api";
 import {
   getPatrolSessions, createPatrolSession, endPatrolSession,
   getSessionCheckpoints, validatePatrolPoint, logSessionCheckpoint,
 } from "../../services/patrolService";
 import Toast from "../../components/Toast";
-import { Shield, Camera, MapPin, RefreshCw, ChevronLeft, Loader, Eye, UserCheck, AlertTriangle } from "lucide-react";
+import { Shield, Camera, MapPin, RefreshCw, ChevronLeft, Loader, Eye, UserCheck, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 
 // Load face-api models once (lazy, on first need)
 let faceModelsLoaded = false;
@@ -32,6 +33,29 @@ async function getFaceDescriptor(imgEl) {
   } catch { return null; }
 }
 
+// Extract face descriptor from a registered security photo (URL or base64 string)
+async function extractDescriptorFromPhoto(rawPhoto) {
+  const s = String(rawPhoto ?? "").trim();
+  if (!s || s.length < 10) return null;
+  let src;
+  if (s.startsWith("http") || s.startsWith("data:")) src = s;
+  else if (s.length > 100) src = `data:image/jpeg;base64,${s}`;
+  else return null;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || 320;
+      canvas.height = img.naturalHeight || 320;
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      resolve(await getFaceDescriptor(canvas));
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 
 const today = () => new Date().toISOString().split("T")[0];
 
@@ -48,10 +72,10 @@ const fmtDate = v => {
   catch { return v; }
 };
 
-// ─── Reference Face Capture Modal ────────────────────────────────────────────
-// Opens front camera via getUserMedia (works on mobile + desktop).
-// Continuously polls for face detection; capture only enabled when a face is in frame.
-function FaceCaptureModal({ onCapture, onSkip }) {
+// ─── Identity Verification Modal ─────────────────────────────────────────────
+// Compares a live selfie against the security's pre-registered face photo.
+// Only calls onVerified() if the face matches; errors block patrol creation.
+function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
   const [stream, setStream]           = useState(null);
   const [modelsReady, setModelsReady] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
@@ -59,17 +83,19 @@ function FaceCaptureModal({ onCapture, onSkip }) {
   const [capturing, setCapturing]     = useState(false);
   const [initError, setInitError]     = useState(null);
   const [retryKey, setRetryKey]       = useState(0);
+  const [verifyResult, setVerifyResult] = useState(null); // null | "matched" | "no-match"
+  const [matchDistance, setMatchDistance] = useState(null);
   const videoRef    = useRef(null);
   const canvasRef   = useRef(null);
   const intervalRef = useRef(null);
 
-  // Load models + open front camera on mount (re-runs on retry)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setInitError(null);
       setModelsReady(false);
       setFaceDetected(false);
+      setVerifyResult(null);
       setStatus("Loading face AI models…");
       try { await loadFaceModels(); }
       catch { if (!cancelled) setInitError("Face AI models failed to load — check your connection."); return; }
@@ -98,7 +124,6 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     return () => { cancelled = true; };
   }, [retryKey]); // eslint-disable-line
 
-  // Wire stream → <video>
   useEffect(() => {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
@@ -106,10 +131,8 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     }
   }, [stream]);
 
-  // Stop stream on unmount or retry
   useEffect(() => () => { if (stream) stream.getTracks().forEach(t => t.stop()); }, [stream]);
 
-  // Face detection polling — every 500 ms once models + stream are ready
   const startDetection = useCallback(() => {
     if (intervalRef.current) return;
     intervalRef.current = setInterval(async () => {
@@ -130,30 +153,40 @@ function FaceCaptureModal({ onCapture, onSkip }) {
   }, []);
 
   useEffect(() => {
-    if (modelsReady && stream) {
+    if (modelsReady && stream && !verifyResult) {
       const t = setTimeout(() => { setStatus("Position your face in the oval"); startDetection(); }, 600);
       return () => { clearTimeout(t); stopDetection(); };
     }
     return stopDetection;
-  }, [modelsReady, stream, startDetection, stopDetection]);
+  }, [modelsReady, stream, verifyResult, startDetection, stopDetection]);
 
   const handleCapture = async () => {
     const v = videoRef.current, c = canvasRef.current;
     if (!v || !c) return;
     setCapturing(true);
-    setStatus("Capturing…");
+    setStatus("Verifying identity…");
     stopDetection();
     c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
     c.getContext("2d").drawImage(v, 0, 0);
     if (stream) stream.getTracks().forEach(t => t.stop());
-    setStatus("Detecting face…");
-    const descriptor = await getFaceDescriptor(c);
-    if (!descriptor) {
-      setInitError("No face detected in capture — please retry.");
+
+    const selfieDescriptor = await getFaceDescriptor(c);
+    if (!selfieDescriptor) {
+      setInitError("No face detected in frame — please retry.");
       setCapturing(false);
       return;
     }
-    onCapture(descriptor);
+
+    const distance = faceapi.euclideanDistance(referenceDescriptor, selfieDescriptor);
+    setMatchDistance(distance);
+
+    if (distance < 0.6) {
+      setVerifyResult("matched");
+      setTimeout(() => onVerified(), 1500);
+    } else {
+      setVerifyResult("no-match");
+      setCapturing(false);
+    }
   };
 
   const doRetry = () => {
@@ -161,6 +194,9 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     if (stream) stream.getTracks().forEach(t => t.stop());
     setStream(null);
     setCapturing(false);
+    setVerifyResult(null);
+    setMatchDistance(null);
+    setInitError(null);
     setRetryKey(k => k + 1);
   };
 
@@ -171,8 +207,42 @@ function FaceCaptureModal({ onCapture, onSkip }) {
     sub: { fontSize:12, color:"var(--text2)", textAlign:"center", marginBottom:16 },
     btn: { width:"100%", padding:"11px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
     btnOff: { width:"100%", padding:"11px 0", background:"var(--border)", color:"var(--text2)", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"not-allowed", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
-    skip: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" },
+    cancel: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" },
   };
+
+  // ── Result overlay (matched / no-match) ──────────────────────────────────
+  if (verifyResult) {
+    const matched = verifyResult === "matched";
+    return (
+      <div style={S.overlay}>
+        <div style={S.box}>
+          <div style={{ textAlign:"center", padding:"8px 0 16px" }}>
+            {matched
+              ? <CheckCircle size={48} style={{ color:"#22c55e" }}/>
+              : <XCircle size={48} style={{ color:"#ef4444" }}/>
+            }
+            <div style={{ fontWeight:700, fontSize:16, color: matched ? "#22c55e" : "#ef4444", marginTop:12 }}>
+              {matched ? "Identity Verified" : "Face Does Not Match"}
+            </div>
+            <div style={{ fontSize:12, color:"var(--text2)", marginTop:6 }}>
+              {matched
+                ? "Starting patrol…"
+                : `Similarity score: ${((1 - matchDistance) * 100).toFixed(0)}% (need ≥ 40%)`
+              }
+            </div>
+          </div>
+          {!matched && (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <button onClick={doRetry} style={{ ...S.btn, marginBottom:0 }}>
+                <Camera size={14}/> Try Again
+              </button>
+              <button onClick={onCancel} style={S.cancel}>Cancel</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.overlay}>
@@ -181,8 +251,8 @@ function FaceCaptureModal({ onCapture, onSkip }) {
         <div style={{ textAlign:"center", marginBottom:12 }}>
           <UserCheck size={28} style={{ color:"var(--accent)" }}/>
         </div>
-        <div style={S.title}>Face Registration</div>
-        <div style={S.sub}>Look at the front camera. Capture when your face is detected.</div>
+        <div style={S.title}>Identity Verification</div>
+        <div style={S.sub}>Look at the front camera. Capture to verify your identity.</div>
 
         {initError ? (
           <div style={{ padding:"12px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", marginBottom:12 }}>
@@ -193,19 +263,16 @@ function FaceCaptureModal({ onCapture, onSkip }) {
               <button onClick={doRetry} style={{ flex:1, padding:"7px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                 Retry
               </button>
-              <button onClick={onSkip} style={{ flex:1, padding:"7px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:12, cursor:"pointer" }}>
-                Skip Verification
+              <button onClick={onCancel} style={{ flex:1, padding:"7px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:12, cursor:"pointer" }}>
+                Cancel
               </button>
             </div>
           </div>
         ) : (
           <>
-            {/* Live camera view with face-ring overlay */}
             <div style={{ position:"relative", background:"#000", borderRadius:"var(--radius-sm)", overflow:"hidden", marginBottom:12, aspectRatio:"4/3" }}>
               <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
-              {/* Oval face ring — fills 80% of frame, green when detected */}
               <div style={{ position:"absolute", left:"10%", right:"10%", top:"8%", bottom:"8%", borderRadius:"50%", border:`3px solid ${faceDetected ? "#22c55e" : "#475569"}`, transition:"border-color 0.3s, box-shadow 0.3s", boxShadow: faceDetected ? "0 0 20px rgba(34,197,94,0.55)" : "none", pointerEvents:"none" }}/>
-              {/* Status badge */}
               <div style={{ position:"absolute", bottom:8, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
                 <span style={{
                   display:"inline-flex", alignItems:"center", gap:5,
@@ -222,13 +289,13 @@ function FaceCaptureModal({ onCapture, onSkip }) {
 
             {faceDetected
               ? <button style={S.btn} onClick={handleCapture} disabled={capturing}>
-                  {capturing ? <><Loader size={14} style={{ animation:"spin 1s linear infinite" }}/> Processing…</> : <><Camera size={14}/> Capture Face</>}
+                  {capturing ? <><Loader size={14} style={{ animation:"spin 1s linear infinite" }}/> Verifying…</> : <><Camera size={14}/> Capture & Verify</>}
                 </button>
               : <button style={S.btnOff} disabled>
                   <Camera size={14}/> Waiting for face…
                 </button>
             }
-            <button style={S.skip} onClick={onSkip}>Skip (no face verification)</button>
+            <button style={S.cancel} onClick={onCancel}>Cancel</button>
           </>
         )}
       </div>
@@ -822,7 +889,7 @@ export default function SecurityPatrol() {
   const [creating, setCreating]   = useState(false);
   const [toast, setToast]         = useState(null);
   const [activeSession, setActiveSession] = useState(null);
-  const [pendingSession, setPendingSession] = useState(null); // waiting for face capture
+  const [pendingRef, setPendingRef] = useState(null); // registered face descriptor waiting for live verify
 
   // SP_App_Get_PatrolM_FrontGrid does not return today's sessions.
   // We track locally-created sessions and merge them with SP data so they stay visible.
@@ -848,31 +915,59 @@ export default function SecurityPatrol() {
   const handleNew = async () => {
     setCreating(true);
     try {
-      const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
-      if (res.success) {
-        const tracked = { ...res.data, _date: date };
-        localSessionsRef.current = [...localSessionsRef.current, tracked];
-        // Show face capture before starting the patrol session
-        setPendingSession(res.data);
-      } else {
-        setToast({ type: "error", msg: res.message || "Failed to create patrol session" });
+      // Pre-warm models in background; will await below if not done yet
+      loadFaceModels().catch(() => {});
+
+      // Fetch the logged-in security's profile and registered face photo
+      const secRes = await api.get("/setup/securities");
+      const rows = Array.isArray(secRes.data) ? secRes.data : [];
+      const me = rows.find(r => {
+        const uid = r.uid ?? r.UId ?? r.Uid ?? r.userId ?? r.UserId ?? 0;
+        return Number(uid) === Number(user?.userId);
+      });
+      // API normalizes: photo = base64 data URI (or ""), photoPath = original (Cloudinary URL or server path)
+      const photoB64 = me?.photo || "";
+      const photoUrl = me?.photoPath || "";
+      const rawPhoto = photoB64 || (photoUrl.startsWith("http") ? photoUrl : "");
+      if (!me || !rawPhoto) {
+        setToast({ type: "error", msg: "No face photo on file — ask admin to upload your photo in Setup → Securities." });
+        return;
       }
+
+      // Ensure models are loaded, then extract descriptor from registered photo
+      await loadFaceModels();
+      const refDescriptor = await extractDescriptorFromPhoto(rawPhoto);
+      if (!refDescriptor) {
+        setToast({ type: "error", msg: "Registered photo has no detectable face — ask admin to re-upload a clear face photo." });
+        return;
+      }
+
+      // Show live face verification modal; session is only created after match
+      setPendingRef(refDescriptor);
     } catch (err) {
-      setToast({ type: "error", msg: err.response?.data?.message || "Failed to create patrol" });
+      setToast({ type: "error", msg: err.response?.data?.message || "Failed to load security profile" });
     } finally { setCreating(false); }
   };
 
-  const handleFaceCaptured = (descriptor) => {
-    if (!pendingSession) return;
-    setActiveSession({ ...pendingSession, faceDescriptor: descriptor });
-    setPendingSession(null);
+  const handleFaceVerified = async () => {
+    try {
+      const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
+      if (res.success) {
+        const tracked = { ...res.data, _date: date, faceDescriptor: pendingRef };
+        localSessionsRef.current = [...localSessionsRef.current, tracked];
+        setPendingRef(null);
+        setActiveSession(tracked);
+      } else {
+        setToast({ type: "error", msg: res.message || "Failed to create patrol session" });
+        setPendingRef(null);
+      }
+    } catch (err) {
+      setToast({ type: "error", msg: err.response?.data?.message || "Failed to create patrol" });
+      setPendingRef(null);
+    }
   };
 
-  const handleFaceSkipped = () => {
-    if (!pendingSession) return;
-    setActiveSession(pendingSession);
-    setPendingSession(null);
-  };
+  const handleFaceCancel = () => setPendingRef(null);
 
   const handleSessionRow = (session) => setActiveSession(session);
 
@@ -893,11 +988,15 @@ export default function SecurityPatrol() {
     td: { padding: "10px 12px", fontSize: 13, color: "var(--text)", borderBottom: "1px solid var(--border)", cursor: "pointer" },
   };
 
-  if (pendingSession) {
+  if (pendingRef) {
     return (
       <>
         <Toast toast={toast} onClose={() => setToast(null)} />
-        <FaceCaptureModal onCapture={handleFaceCaptured} onSkip={handleFaceSkipped} />
+        <FaceCaptureModal
+          referenceDescriptor={pendingRef}
+          onVerified={handleFaceVerified}
+          onCancel={handleFaceCancel}
+        />
       </>
     );
   }
