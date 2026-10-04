@@ -57,7 +57,8 @@ async function loginSecurity({ username, password, companyCode, gateId, gateName
     token,
     userId,
     companyId,
-    userName:  sname || username,
+    userName:     sname || username,
+    securityCode: username,  // SCode used to log in (e.g. "S002") — used for photo lookup
     gateId:    Number(gateId) || 0,
     gateName:  gateName || "",
     loginType: "mobile",

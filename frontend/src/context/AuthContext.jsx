@@ -57,14 +57,15 @@ export function AuthProvider({ children }) {
 
   const login = useCallback((data) => {
     const userData = {
-      token:       data.token,
-      userId:      data.userId,
-      companyId:   data.companyId,
-      userName:    data.userName,
-      gateId:      data.gateId    || null,
-      gateName:    data.gateName  || null,
-      loginType:   data.loginType || "desktop",
-      mobileMenus: data.menus     || null,
+      token:        data.token,
+      userId:       data.userId,
+      companyId:    data.companyId,
+      userName:     data.userName,
+      securityCode: data.securityCode || null,  // SCode like "S002", only for mobile/security login
+      gateId:       data.gateId    || null,
+      gateName:     data.gateName  || null,
+      loginType:    data.loginType || "desktop",
+      mobileMenus:  data.menus     || null,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
     setUser(userData);

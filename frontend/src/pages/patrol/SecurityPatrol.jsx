@@ -922,14 +922,23 @@ export default function SecurityPatrol() {
       const secRes = await api.get("/setup/securities");
       const rows = Array.isArray(secRes.data) ? secRes.data : [];
       const me = rows.find(r => {
-        const uid = r.uid ?? r.UId ?? r.Uid ?? r.userId ?? r.UserId ?? 0;
-        return Number(uid) === Number(user?.userId);
+        // Match by SCode (login username e.g. "S002") — most reliable
+        const code = r.code?.toLowerCase() || "";
+        if (code && user?.securityCode && code === user.securityCode.toLowerCase()) return true;
+        // Also try matching against userName (in case securityCode not yet in stored session)
+        if (code && user?.userName && code === user.userName.toLowerCase()) return true;
+        // Last resort: uid match
+        return Number(r.uid) === Number(user?.userId);
       });
       // API normalizes: photo = base64 data URI (or ""), photoPath = original (Cloudinary URL or server path)
       const photoB64 = me?.photo || "";
       const photoUrl = me?.photoPath || "";
       const rawPhoto = photoB64 || (photoUrl.startsWith("http") ? photoUrl : "");
-      if (!me || !rawPhoto) {
+      if (!me) {
+        setToast({ type: "error", msg: `Security profile not found (code: ${user?.securityCode || user?.userName || user?.userId}) — contact admin.` });
+        return;
+      }
+      if (!rawPhoto) {
         setToast({ type: "error", msg: "No face photo on file — ask admin to upload your photo in Setup → Securities." });
         return;
       }
