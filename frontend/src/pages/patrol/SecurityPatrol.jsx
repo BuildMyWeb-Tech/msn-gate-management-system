@@ -73,35 +73,38 @@ const fmtDate = v => {
 };
 
 // ─── Identity Verification Modal ─────────────────────────────────────────────
-// Compares a live selfie against the security's pre-registered face photo.
-// Only calls onVerified() if the face matches; errors block patrol creation.
+// Auto Scan: face stays in oval for ~3 s → auto-verifies against registered photo.
+// Manual: one tap → instant verify from live video frame. No photo saved.
 function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
-  const [stream, setStream]           = useState(null);
+  const [stream, setStream]         = useState(null);
   const [modelsReady, setModelsReady] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
-  const [status, setStatus]           = useState("Initialising…");
-  const [capturing, setCapturing]     = useState(false);
-  const [initError, setInitError]     = useState(null);
-  const [retryKey, setRetryKey]       = useState(0);
+  const [initError, setInitError]   = useState(null);
+  const [retryKey, setRetryKey]     = useState(0);
+  const [autoScan, setAutoScan]     = useState(false);
+  const [faceCount, setFaceCount]   = useState(0);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStatus, setScanStatus] = useState("Position your face in the oval");
+  const [verifying, setVerifying]   = useState(false);
   const [verifyResult, setVerifyResult] = useState(null); // null | "matched" | "no-match"
   const [matchDistance, setMatchDistance] = useState(null);
-  const videoRef    = useRef(null);
-  const canvasRef   = useRef(null);
-  const intervalRef = useRef(null);
 
+  const videoRef       = useRef(null);
+  const scanIntervalRef = useRef(null);
+  const scanProgressRef = useRef(0);   // mutable progress inside interval
+  const busyRef         = useRef(false); // prevent overlapping detections
+
+  // ── Camera + model init ────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setInitError(null);
       setModelsReady(false);
-      setFaceDetected(false);
-      setVerifyResult(null);
-      setStatus("Loading face AI models…");
+      setScanStatus("Loading face models…");
       try { await loadFaceModels(); }
-      catch { if (!cancelled) setInitError("Face AI models failed to load — check your connection."); return; }
+      catch { if (!cancelled) setInitError("Face AI models failed to load — check connection."); return; }
       if (cancelled) return;
       setModelsReady(true);
-      setStatus("Opening front camera…");
+      setScanStatus("Position your face in the oval");
       try {
         const s = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
@@ -133,110 +136,152 @@ function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
 
   useEffect(() => () => { if (stream) stream.getTracks().forEach(t => t.stop()); }, [stream]);
 
-  const startDetection = useCallback(() => {
-    if (intervalRef.current) return;
-    intervalRef.current = setInterval(async () => {
-      const v = videoRef.current;
-      if (!v || v.readyState !== 4) return;
-      try {
-        const d = await faceapi
-          .detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-          .withFaceLandmarks(true);
-        setFaceDetected(!!d);
-        setStatus(d ? "Face detected — press Capture" : "Position your face in the oval");
-      } catch { setFaceDetected(false); }
-    }, 500);
+  // ── Scan loop ──────────────────────────────────────────────────────────────
+  const stopScan = useCallback(() => {
+    if (scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
+    scanProgressRef.current = 0;
+    setScanProgress(0);
+    busyRef.current = false;
   }, []);
 
-  const stopDetection = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
-
-  useEffect(() => {
-    if (modelsReady && stream && !verifyResult) {
-      const t = setTimeout(() => { setStatus("Position your face in the oval"); startDetection(); }, 600);
-      return () => { clearTimeout(t); stopDetection(); };
-    }
-    return stopDetection;
-  }, [modelsReady, stream, verifyResult, startDetection, stopDetection]);
-
-  const handleCapture = async () => {
-    const v = videoRef.current, c = canvasRef.current;
-    if (!v || !c) return;
-    setCapturing(true);
-    setStatus("Verifying identity…");
-    stopDetection();
-    c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
-    c.getContext("2d").drawImage(v, 0, 0);
-    if (stream) stream.getTracks().forEach(t => t.stop());
-
-    const selfieDescriptor = await getFaceDescriptor(c);
-    if (!selfieDescriptor) {
-      setInitError("No face detected in frame — please retry.");
-      setCapturing(false);
-      return;
-    }
-
-    const distance = faceapi.euclideanDistance(referenceDescriptor, selfieDescriptor);
+  const runVerification = useCallback(async (descriptor) => {
+    setVerifying(true);
+    setAutoScan(false);
+    stopScan();
+    const distance = faceapi.euclideanDistance(referenceDescriptor, descriptor);
     setMatchDistance(distance);
-
     if (distance < 0.6) {
       setVerifyResult("matched");
+      if (stream) stream.getTracks().forEach(t => t.stop());
       setTimeout(() => onVerified(), 1500);
     } else {
       setVerifyResult("no-match");
-      setCapturing(false);
+      setVerifying(false);
+    }
+  }, [referenceDescriptor, stream, onVerified, stopScan]);
+
+  const startScan = useCallback(() => {
+    if (scanIntervalRef.current) return;
+    scanProgressRef.current = 0;
+    setScanProgress(0);
+    // Each hit +10 → 10 hits × 300 ms = 3 seconds of locked face to trigger
+    scanIntervalRef.current = setInterval(async () => {
+      if (busyRef.current) return;
+      const v = videoRef.current;
+      if (!v || v.readyState !== 4) return;
+      busyRef.current = true;
+      try {
+        const det = await faceapi
+          .detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+          .withFaceLandmarks(true)
+          .withFaceDescriptor();
+        if (det) {
+          setFaceCount(1);
+          setScanStatus("Face locked — hold still…");
+          scanProgressRef.current = Math.min(scanProgressRef.current + 10, 100);
+          setScanProgress(scanProgressRef.current);
+          if (scanProgressRef.current >= 100) {
+            stopScan();
+            await runVerification(det.descriptor);
+          }
+        } else {
+          setFaceCount(0);
+          scanProgressRef.current = 0;
+          setScanProgress(0);
+          setScanStatus("Position your face in the oval");
+        }
+      } catch { /* ignore detection errors */ }
+      busyRef.current = false;
+    }, 300);
+  }, [stopScan, runVerification]);
+
+  // Start/stop scan based on autoScan toggle
+  useEffect(() => {
+    if (autoScan && modelsReady && stream && !verifyResult) startScan();
+    else stopScan();
+    return stopScan;
+  }, [autoScan, modelsReady, stream, verifyResult, startScan, stopScan]);
+
+  // ── Manual verify ──────────────────────────────────────────────────────────
+  const handleManual = async () => {
+    const v = videoRef.current;
+    if (!v || v.readyState !== 4 || verifying) return;
+    setVerifying(true);
+    stopScan();
+    setAutoScan(false);
+    setScanStatus("Verifying…");
+    try {
+      const det = await faceapi
+        .detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+      if (!det) {
+        setScanStatus("No face detected — try again");
+        setVerifying(false);
+        return;
+      }
+      await runVerification(det.descriptor);
+    } catch {
+      setScanStatus("Detection error — try again");
+      setVerifying(false);
     }
   };
 
+  // ── Retry ──────────────────────────────────────────────────────────────────
   const doRetry = () => {
-    stopDetection();
+    stopScan();
     if (stream) stream.getTracks().forEach(t => t.stop());
     setStream(null);
-    setCapturing(false);
+    setAutoScan(false);
     setVerifyResult(null);
     setMatchDistance(null);
+    setFaceCount(0);
+    setScanProgress(0);
+    setScanStatus("Position your face in the oval");
+    setVerifying(false);
     setInitError(null);
     setRetryKey(k => k + 1);
   };
 
+  // ── Styles ─────────────────────────────────────────────────────────────────
   const S = {
-    overlay: { position:"fixed", inset:0, zIndex:800, background:"rgba(0,0,0,0.90)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
-    box: { background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"min(400px,95vw)", padding:20 },
-    title: { fontWeight:700, fontSize:15, color:"var(--text)", textAlign:"center", marginBottom:4 },
-    sub: { fontSize:12, color:"var(--text2)", textAlign:"center", marginBottom:16 },
-    btn: { width:"100%", padding:"11px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
-    btnOff: { width:"100%", padding:"11px 0", background:"var(--border)", color:"var(--text2)", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"not-allowed", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
-    cancel: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" },
+    overlay: { position:"fixed", inset:0, zIndex:800, background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
+    box: { background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"min(420px,96vw)", overflow:"hidden" },
+    header: { padding:"14px 16px 0", textAlign:"center" },
+    title: { fontWeight:700, fontSize:15, color:"var(--text)", marginBottom:2 },
+    sub: { fontSize:11, color:"var(--text2)", marginBottom:12 },
+    btnRow: { display:"flex", gap:8, padding:"10px 16px 14px" },
+    btnBlue: { flex:1, padding:"11px 0", background:"#2563eb", color:"#fff", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 },
+    btnStop: { flex:1, padding:"11px 0", background:"#d97706", color:"#fff", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 },
+    btnGray: { flex:1, padding:"11px 0", background:"var(--surface2)", color:"var(--text)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 },
+    cancel: { display:"block", width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"none", fontSize:12, cursor:"pointer", borderTop:"1px solid var(--border)" },
+    resultBox: { padding:"24px 20px 20px", textAlign:"center" },
+    retryBtn: { width:"100%", padding:"11px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8 },
+    cancelBtn: { width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" },
   };
 
-  // ── Result overlay (matched / no-match) ──────────────────────────────────
+  // ── Result screen ──────────────────────────────────────────────────────────
   if (verifyResult) {
     const matched = verifyResult === "matched";
     return (
       <div style={S.overlay}>
         <div style={S.box}>
-          <div style={{ textAlign:"center", padding:"8px 0 16px" }}>
+          <div style={S.resultBox}>
             {matched
-              ? <CheckCircle size={48} style={{ color:"#22c55e" }}/>
-              : <XCircle size={48} style={{ color:"#ef4444" }}/>
+              ? <CheckCircle size={52} style={{ color:"#22c55e" }}/>
+              : <XCircle size={52} style={{ color:"#ef4444" }}/>
             }
-            <div style={{ fontWeight:700, fontSize:16, color: matched ? "#22c55e" : "#ef4444", marginTop:12 }}>
+            <div style={{ fontWeight:700, fontSize:17, color: matched ? "#22c55e" : "#ef4444", marginTop:14, marginBottom:6 }}>
               {matched ? "Identity Verified" : "Face Does Not Match"}
             </div>
-            <div style={{ fontSize:12, color:"var(--text2)", marginTop:6 }}>
-              {matched
-                ? "Starting patrol…"
-                : `Similarity score: ${((1 - matchDistance) * 100).toFixed(0)}% (need ≥ 40%)`
-              }
+            <div style={{ fontSize:12, color:"var(--text2)" }}>
+              {matched ? "Starting patrol…" : `Similarity ${((1 - matchDistance) * 100).toFixed(0)}% — need ≥ 40%`}
             </div>
           </div>
           {!matched && (
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              <button onClick={doRetry} style={{ ...S.btn, marginBottom:0 }}>
-                <Camera size={14}/> Try Again
-              </button>
-              <button onClick={onCancel} style={S.cancel}>Cancel</button>
+            <div style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:8 }}>
+              <button onClick={doRetry} style={S.retryBtn}>Try Again</button>
+              <button onClick={onCancel} style={S.cancelBtn}>Cancel</button>
             </div>
           )}
         </div>
@@ -244,60 +289,84 @@ function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
     );
   }
 
+  const ringColor = faceCount === 1
+    ? (autoScan ? "#facc15" : "#22c55e")  // yellow while scanning, green when detected+idle
+    : "#475569";
+  const ringGlow = faceCount === 1
+    ? (autoScan ? "0 0 20px rgba(250,204,21,0.5)" : "0 0 16px rgba(34,197,94,0.45)")
+    : "none";
+
   return (
     <div style={S.overlay}>
       <div style={S.box}>
-        <canvas ref={canvasRef} style={{ display:"none" }}/>
-        <div style={{ textAlign:"center", marginBottom:12 }}>
-          <UserCheck size={28} style={{ color:"var(--accent)" }}/>
+        {/* Header */}
+        <div style={S.header}>
+          <div style={S.title}>Identity Verification</div>
+          <div style={S.sub}>Auto scan or tap Manual to verify your identity</div>
         </div>
-        <div style={S.title}>Identity Verification</div>
-        <div style={S.sub}>Look at the front camera. Capture to verify your identity.</div>
 
-        {initError ? (
-          <div style={{ padding:"12px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", marginBottom:12 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--red)", marginBottom:10 }}>
+        {/* Error */}
+        {initError && (
+          <div style={{ margin:"0 16px 12px", padding:"10px 12px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--red)", marginBottom:8 }}>
               <AlertTriangle size={13}/> {initError}
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              <button onClick={doRetry} style={{ flex:1, padding:"7px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                Retry
-              </button>
-              <button onClick={onCancel} style={{ flex:1, padding:"7px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:12, cursor:"pointer" }}>
-                Cancel
-              </button>
+              <button onClick={doRetry} style={{ flex:1, padding:"7px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}>Retry</button>
+              <button onClick={onCancel} style={{ flex:1, padding:"7px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:12, cursor:"pointer" }}>Cancel</button>
             </div>
           </div>
-        ) : (
-          <>
-            <div style={{ position:"relative", background:"#000", borderRadius:"var(--radius-sm)", overflow:"hidden", marginBottom:12, aspectRatio:"4/3" }}>
-              <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
-              <div style={{ position:"absolute", left:"10%", right:"10%", top:"8%", bottom:"8%", borderRadius:"50%", border:`3px solid ${faceDetected ? "#22c55e" : "#475569"}`, transition:"border-color 0.3s, box-shadow 0.3s", boxShadow: faceDetected ? "0 0 20px rgba(34,197,94,0.55)" : "none", pointerEvents:"none" }}/>
-              <div style={{ position:"absolute", bottom:8, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
-                <span style={{
-                  display:"inline-flex", alignItems:"center", gap:5,
-                  padding:"4px 12px", borderRadius:20, fontSize:11,
-                  background: faceDetected ? "rgba(21,128,61,0.88)" : "rgba(15,23,42,0.88)",
-                  color: faceDetected ? "#86efac" : "#94a3b8",
-                  border:`1px solid ${faceDetected ? "#166534" : "#334155"}`,
-                }}>
-                  <span style={{ width:6, height:6, borderRadius:"50%", background: faceDetected ? "#4ade80" : "#475569", display:"inline-block" }}/>
-                  {status}
-                </span>
-              </div>
-            </div>
+        )}
 
-            {faceDetected
-              ? <button style={S.btn} onClick={handleCapture} disabled={capturing}>
-                  {capturing ? <><Loader size={14} style={{ animation:"spin 1s linear infinite" }}/> Verifying…</> : <><Camera size={14}/> Capture & Verify</>}
+        {/* Camera */}
+        {!initError && (
+          <div style={{ position:"relative", background:"#000", aspectRatio:"4/3", margin:"10px 0 0" }}>
+            <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
+
+            {/* Oval ring */}
+            <div style={{ position:"absolute", left:"12%", right:"12%", top:"6%", bottom:"6%", borderRadius:"50%", border:`3px solid ${ringColor}`, transition:"border-color 0.25s, box-shadow 0.25s", boxShadow: ringGlow, pointerEvents:"none" }}/>
+
+            {/* Progress bar — only visible during auto scan */}
+            {autoScan && scanProgress > 0 && (
+              <div style={{ position:"absolute", bottom:44, left:"12%", right:"12%", height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, overflow:"hidden" }}>
+                <div style={{ height:"100%", width:`${scanProgress}%`, background:"#facc15", borderRadius:2, transition:"width 0.25s" }}/>
+              </div>
+            )}
+
+            {/* Status badge */}
+            <div style={{ position:"absolute", bottom:10, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
+              <span style={{
+                display:"inline-flex", alignItems:"center", gap:5,
+                padding:"4px 12px", borderRadius:20, fontSize:11,
+                background: faceCount === 1 ? (autoScan ? "rgba(92,64,0,0.9)" : "rgba(21,128,61,0.88)") : "rgba(15,23,42,0.88)",
+                color:       faceCount === 1 ? (autoScan ? "#fde68a" : "#86efac") : "#94a3b8",
+                border:`1px solid ${faceCount === 1 ? (autoScan ? "#78350f" : "#166534") : "#334155"}`,
+              }}>
+                <span style={{ width:6, height:6, borderRadius:"50%", background: faceCount === 1 ? (autoScan ? "#facc15" : "#4ade80") : "#475569", display:"inline-block" }}/>
+                {verifying ? "Verifying…" : scanStatus}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Buttons */}
+        {!initError && (
+          <div style={S.btnRow}>
+            {!autoScan
+              ? <button style={S.btnBlue} onClick={() => setAutoScan(true)} disabled={!modelsReady || !stream || verifying}>
+                  <RefreshCw size={14}/> Start Auto Scan
                 </button>
-              : <button style={S.btnOff} disabled>
-                  <Camera size={14}/> Waiting for face…
+              : <button style={S.btnStop} onClick={() => setAutoScan(false)}>
+                  <Loader size={14} style={{ animation:"spin 1s linear infinite" }}/> Stop Scan
                 </button>
             }
-            <button style={S.cancel} onClick={onCancel}>Cancel</button>
-          </>
+            <button style={S.btnGray} onClick={handleManual} disabled={!modelsReady || !stream || verifying}>
+              <Eye size={14}/> Manual
+            </button>
+          </div>
         )}
+
+        <button style={S.cancel} onClick={onCancel}>Cancel</button>
       </div>
     </div>
   );
