@@ -1,52 +1,90 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import * as faceapi from "face-api.js";
 import { uploadSecurityPhoto } from "../../services/photoService";
 import Toast from "../../components/Toast";
 import api from "../../services/api";
-import { Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield, Upload, UserCheck } from "lucide-react";
 
-// ── Safe normalise — handles photopath as array or string ─────
+// ── Face model loader (module-level, loads once) ───────────────
+let faceModelsLoaded = false;
+async function loadFaceModels() {
+  if (faceModelsLoaded) return;
+  const base = "/models";
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(base),
+    faceapi.nets.faceLandmark68TinyNet.loadFromUri(base),
+    faceapi.nets.faceRecognitionNet.loadFromUri(base),
+  ]);
+  faceModelsLoaded = true;
+}
+
+const FACE_STEPS = [
+  { label: "Look Straight",       instruction: "Face the camera directly" },
+  { label: "Turn Slightly Left",  instruction: "Turn your head slightly left" },
+  { label: "Turn Slightly Right", instruction: "Turn your head slightly right" },
+  { label: "Tilt Up Slightly",    instruction: "Tilt your head slightly up" },
+  { label: "Look Down Slightly",  instruction: "Tilt your head slightly down" },
+];
+
+// ── Safe normalise — handles PhotoPath as JSON (with descriptors), array, or plain URL ──
 function normalise(r) {
   try {
     const rawPhoto = r.PhotoPath ?? r.photopath ?? r.photo ?? "";
     let photo = "";
+    let hasFace = false;
+    let rawDescriptors = [];
+
     if (Array.isArray(rawPhoto)) {
       photo = rawPhoto.find(p => p && !String(p).startsWith("/Security/")) || "";
     } else {
-      const s = String(rawPhoto||"");
-      photo = s.startsWith("/Security/") ? "" : s;
+      const s = String(rawPhoto || "");
+      if (s.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(s);
+          photo = parsed.photo || "";
+          if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
+            hasFace = true;
+            rawDescriptors = parsed.descriptors;
+          }
+        } catch {}
+      } else {
+        photo = s.startsWith("/Security/") ? "" : s;
+      }
     }
+
     const mob1 = String(r.smobile1 ?? r.Smobile1 ?? r.SMobile1 ?? 0);
     const mob2 = String(r.smobile2 ?? r.SMobile2 ?? 0);
-    // Trim mobile to 10 digits — DB stores large numbers due to precision issues
     const cleanMob = v => { if(!v||v==="0")return ""; const d=v.replace(/\D/g,""); return d.slice(-10)||""; };
     return {
-      uid:       Number(r.uid ?? r.UId ?? r.Uid ?? 0),
-      scode:     String(r.scode    ?? r.SCode    ?? ""),
-      sname:     String(r.sname    ?? r.SName    ?? ""),
-      gender:    String(r.gender   ?? r.Gender   ?? ""),
-      smobile1:  cleanMob(mob1),
-      smobile2:  cleanMob(mob2),
-      address1:  r.Address1 ?? r.address1 ?? "",
-      address2:  r.Address2 ?? r.address2 ?? "",
-      address3:  r.Address3 ?? r.address3 ?? "",
-      address4:  r.Address4 ?? r.address4 ?? "",
-      address5:  r.Address5 ?? r.address5 ?? "",
-      spassword: String(r.spassword ?? r.SPassword ?? ""),
+      uid:            Number(r.uid ?? r.UId ?? r.Uid ?? 0),
+      scode:          String(r.scode    ?? r.SCode    ?? ""),
+      sname:          String(r.sname    ?? r.SName    ?? ""),
+      gender:         String(r.gender   ?? r.Gender   ?? ""),
+      smobile1:       cleanMob(mob1),
+      smobile2:       cleanMob(mob2),
+      address1:       r.Address1 ?? r.address1 ?? "",
+      address2:       r.Address2 ?? r.address2 ?? "",
+      address3:       r.Address3 ?? r.address3 ?? "",
+      address4:       r.Address4 ?? r.address4 ?? "",
+      address5:       r.Address5 ?? r.address5 ?? "",
+      spassword:      String(r.spassword ?? r.SPassword ?? ""),
       photo,
-      active:    Boolean(r.active ?? r.Active ?? true),
+      hasFace,
+      rawDescriptors,
+      active:         Boolean(r.active ?? r.Active ?? true),
     };
   } catch(e) {
     console.error("[normalise] error:", e, r);
-    return { uid:Number(r.uid??0), scode:"", sname:String(r.sname??r.SName??""), gender:"", smobile1:"", smobile2:"", address1:"", address2:"", address3:"", address4:"", address5:"", spassword:"", photo:"", active:true };
+    return { uid:Number(r.uid??0), scode:"", sname:String(r.sname??r.SName??""), gender:"", smobile1:"", smobile2:"", address1:"", address2:"", address3:"", address4:"", address5:"", spassword:"", photo:"", hasFace:false, rawDescriptors:[], active:true };
   }
 }
 
-const EMPTY = { uid:0, scode:"", sname:"", gender:"", smobile1:"", smobile2:"", spassword:"", address1:"", address2:"", address3:"", address4:"", address5:"", photo:"", photoUrl:"", active:true };
+const EMPTY = { uid:0, scode:"", sname:"", gender:"", smobile1:"", smobile2:"", spassword:"", address1:"", address2:"", address3:"", address4:"", address5:"", photo:"", photoUrl:"", faceDescriptors:null, active:true };
 
 function getPhotoSrc(p) {
   if (!p) return null;
   const s = String(p).trim();
-  if (!s || s.startsWith("/Security/")) return null;
+  if (!s || s.startsWith("/Security/") || s.startsWith("{")) return null;
   if (s.startsWith("http") || s.startsWith("data:")) return s;
   if (s.length > 100) return `data:image/jpeg;base64,${s}`;
   return null;
@@ -59,19 +97,166 @@ function PhotoStamp({ photo, name, size=32 }) {
   return <div style={{width:size,height:size,borderRadius:"50%",background:"var(--accent-dim)",display:"flex",alignItems:"center",justifyContent:"center",border:"1.5px solid var(--border2)",flexShrink:0}}><span style={{fontSize:size*0.33,fontWeight:700,color:"var(--accent)"}}>{initials}</span></div>;
 }
 
+// ── 5-angle Face Registration Modal ───────────────────────────
+function FaceRegistrationModal({ onDone, onCancel }) {
+  const [stepIdx, setStepIdx]         = useState(0);
+  const [captured, setCaptured]       = useState([]);
+  const [stream, setStream]           = useState(null);
+  const [modelsReady, setModelsReady] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [capturing, setCapturing]     = useState(false);
+  const [initError, setInitError]     = useState(null);
+  const [retryKey, setRetryKey]       = useState(0);
+  const videoRef    = useRef(null);
+  const detectRef   = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setInitError(null); setModelsReady(false);
+      try { await loadFaceModels(); }
+      catch { if (!cancelled) setInitError("Face AI models failed to load — check your connection."); return; }
+      if (cancelled) return;
+      setModelsReady(true);
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width:{ideal:640}, height:{ideal:480} },
+          audio: false,
+        });
+        if (!cancelled) setStream(s);
+      } catch(e) {
+        const msgs = { NotAllowedError:"Camera permission denied", NotFoundError:"No camera found", NotReadableError:"Camera in use by another app — close it and retry" };
+        if (!cancelled) setInitError(msgs[e.name] || `Camera error: ${e.message}`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [retryKey]); // eslint-disable-line
+
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  useEffect(() => () => {
+    if (detectRef.current) clearInterval(detectRef.current);
+    stream?.getTracks().forEach(t => t.stop());
+  }, [stream]);
+
+  // Continuous face detection while camera is live
+  useEffect(() => {
+    if (!modelsReady || !stream) return;
+    detectRef.current = setInterval(async () => {
+      const v = videoRef.current;
+      if (!v || v.readyState !== 4) return;
+      try {
+        const d = await faceapi.detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })).withFaceLandmarks(true);
+        setFaceDetected(!!d);
+      } catch { setFaceDetected(false); }
+    }, 400);
+    return () => { if (detectRef.current) { clearInterval(detectRef.current); detectRef.current = null; } };
+  }, [modelsReady, stream]);
+
+  const doCapture = async () => {
+    const v = videoRef.current;
+    if (!v || v.readyState !== 4 || capturing) return;
+    setCapturing(true);
+    try {
+      const det = await faceapi
+        .detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+      if (!det) { setCapturing(false); return; }
+      const newCaptured = [...captured, det.descriptor];
+      setCaptured(newCaptured);
+      if (newCaptured.length < FACE_STEPS.length) {
+        setStepIdx(newCaptured.length);
+        setFaceDetected(false);
+      } else {
+        stream?.getTracks().forEach(t => t.stop());
+        onDone(newCaptured);
+      }
+    } catch { /* ignore */ }
+    setCapturing(false);
+  };
+
+  const doRetry = () => {
+    if (detectRef.current) { clearInterval(detectRef.current); detectRef.current = null; }
+    stream?.getTracks().forEach(t => t.stop());
+    setStream(null); setFaceDetected(false); setCapturing(false);
+    setInitError(null); setCaptured([]); setStepIdx(0);
+    setRetryKey(k => k+1);
+  };
+
+  const step = FACE_STEPS[stepIdx] || FACE_STEPS[0];
+  const ringColor = faceDetected ? "#22c55e" : "#475569";
+  const ringGlow  = faceDetected ? "0 0 16px rgba(34,197,94,0.45)" : "none";
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:600, background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"min(400px,96vw)", overflow:"hidden" }}>
+        {/* Header */}
+        <div style={{ padding:"14px 16px 6px", textAlign:"center" }}>
+          <div style={{ fontWeight:700, fontSize:15, color:"var(--text)" }}>Register Face — {stepIdx+1} / {FACE_STEPS.length}</div>
+          <div style={{ fontSize:13, color:"var(--accent)", fontWeight:700, marginTop:4 }}>{step.label}</div>
+          <div style={{ fontSize:11, color:"var(--text2)", marginBottom:8 }}>{step.instruction}</div>
+          {/* Progress dots */}
+          <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:4 }}>
+            {FACE_STEPS.map((_,i) => (
+              <div key={i} style={{ width:10, height:10, borderRadius:"50%", transition:"background 0.2s",
+                background: i < captured.length ? "#22c55e" : i === stepIdx ? "var(--accent)" : "var(--border)" }}/>
+            ))}
+          </div>
+        </div>
+
+        {initError ? (
+          <div style={{ margin:"8px 16px 12px", padding:"10px 12px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)" }}>
+            <div style={{ fontSize:12, color:"var(--red)", marginBottom:8 }}>{initError}</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={doRetry} style={{ flex:1, padding:"7px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}>Retry</button>
+              <button onClick={onCancel} style={{ flex:1, padding:"7px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-xs)", fontSize:12, cursor:"pointer" }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ position:"relative", background:"#000", aspectRatio:"4/3" }}>
+              <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
+              <div style={{ position:"absolute", left:"12%", right:"12%", top:"6%", bottom:"6%", borderRadius:"50%", border:`3px solid ${ringColor}`, transition:"border-color 0.25s, box-shadow 0.25s", boxShadow:ringGlow, pointerEvents:"none" }}/>
+              <div style={{ position:"absolute", bottom:8, left:0, right:0, textAlign:"center", fontSize:12, fontWeight:700, color: faceDetected ? "#22c55e" : "#94a3b8" }}>
+                {!modelsReady ? "Loading face AI…" : faceDetected ? "Face detected — tap Capture" : "Position your face in the oval"}
+              </div>
+            </div>
+            <div style={{ padding:"10px 16px 12px" }}>
+              <button
+                onClick={doCapture}
+                disabled={!faceDetected || capturing}
+                style={{ width:"100%", padding:"12px 0", background: faceDetected && !capturing ? "#2563eb" : "var(--border)", color: faceDetected && !capturing ? "#fff" : "var(--text2)", border:"none", borderRadius:"var(--radius-sm)", fontSize:14, fontWeight:700, cursor: faceDetected && !capturing ? "pointer" : "not-allowed", transition:"background 0.2s" }}>
+                {capturing ? "Capturing…" : `Capture (${stepIdx+1} of ${FACE_STEPS.length})`}
+              </button>
+            </div>
+          </>
+        )}
+        <button onClick={onCancel} style={{ display:"block", width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"none", borderTop:"1px solid var(--border)", fontSize:12, cursor:"pointer" }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Securities() {
-  const [rows,setRows]         = useState([]);
-  const [loading,setLoading]   = useState(true);
-  const [toast,setToast]       = useState(null);
-  const [showForm,setShowForm] = useState(false);
-  const [form,setForm]         = useState(EMPTY);
-  const [errors,setErrors]     = useState({});
-  const [saving,setSaving]     = useState(false);
-  const [uploading,setUploading] = useState(false);
-  const [cameraOn,setCameraOn] = useState(false);
-  const [viewRow,setViewRow]   = useState(null);
+  const [rows,setRows]               = useState([]);
+  const [loading,setLoading]         = useState(true);
+  const [toast,setToast]             = useState(null);
+  const [showForm,setShowForm]       = useState(false);
+  const [form,setForm]               = useState(EMPTY);
+  const [errors,setErrors]           = useState({});
+  const [saving,setSaving]           = useState(false);
+  const [uploading,setUploading]     = useState(false);
+  const [cameraOn,setCameraOn]       = useState(false);
+  const [viewRow,setViewRow]         = useState(null);
+  const [showFaceReg,setShowFaceReg] = useState(false);
   const videoRef = useRef(null);
-  const [stream,setStream]     = useState(null);
+  const [stream,setStream]           = useState(null);
   const fileRef  = useRef(null);
 
   const load = useCallback(async () => {
@@ -88,13 +273,16 @@ export default function Securities() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openNew  = () => { setForm(EMPTY); setErrors({}); setCameraOn(false); setShowForm(true); };
+  const openNew  = () => { setForm(EMPTY); setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true); };
   const openEdit = row => {
     const src = getPhotoSrc(row.photo);
-    setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "" });
-    setErrors({}); setCameraOn(false); setShowForm(true);
+    const existingDescriptors = row.rawDescriptors?.length > 0
+      ? row.rawDescriptors.map(d => new Float32Array(d))
+      : null;
+    setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "", faceDescriptors: existingDescriptors });
+    setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true);
   };
-  const closeForm = () => { setShowForm(false); setCameraOn(false); stream?.getTracks().forEach(t=>t.stop()); setStream(null); };
+  const closeForm = () => { setShowForm(false); setCameraOn(false); setShowFaceReg(false); stream?.getTracks().forEach(t=>t.stop()); setStream(null); };
   const onChange  = e => { setForm(p=>({...p,[e.target.name]:e.target.value})); if(errors[e.target.name])setErrors(p=>({...p,[e.target.name]:""})); };
 
   const openCam = async () => {
@@ -133,6 +321,12 @@ export default function Securities() {
     finally { setUploading(false); }
   };
 
+  const handleFaceRegDone = (descriptors) => {
+    setShowFaceReg(false);
+    setForm(p => ({ ...p, faceDescriptors: descriptors }));
+    setToast({ type:"success", msg:`Face registered: ${descriptors.length} angles captured ✓` });
+  };
+
   const onSave = async () => {
     const errs={};
     if(!form.sname.trim())  errs.sname="Name is required";
@@ -144,6 +338,19 @@ export default function Securities() {
     try {
       const now=new Date();
       const localNow=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}.${String(now.getMilliseconds()).padStart(3,"0")}`;
+
+      // Build PhotoPath: if face descriptors registered, store JSON with both photo + descriptors
+      const photoUrl = form.photoUrl || form.photo || "";
+      let photoPath = "/Security/";
+      if (form.faceDescriptors?.length > 0) {
+        photoPath = JSON.stringify({
+          photo: photoUrl,
+          descriptors: form.faceDescriptors.map(d => Array.from(d)),
+        });
+      } else if (photoUrl) {
+        photoPath = photoUrl;
+      }
+
       const payload = JSON.stringify({
         UId:       form.uid||0,
         SCode:     form.scode||"",
@@ -157,7 +364,7 @@ export default function Securities() {
         Address3:  form.address3||null,
         Address4:  form.address4||null,
         Address5:  form.address5||null,
-        PhotoPath: form.photoUrl||form.photo||"/Security/",
+        PhotoPath: photoPath,
         Active:    form.active!==false?1:0,
         Companyid: 1,
         CreatedBy: 1,
@@ -186,6 +393,13 @@ export default function Securities() {
       <Toast toast={toast} onClose={()=>setToast(null)}/>
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFileUpload}/>
 
+      {showFaceReg && (
+        <FaceRegistrationModal
+          onDone={handleFaceRegDone}
+          onCancel={() => setShowFaceReg(false)}
+        />
+      )}
+
       <div className="page-hdr">
         <div className="page-hdr-left"><h1>Securities</h1><p>{rows.length} record{rows.length!==1?"s":""}</p></div>
         <div className="page-hdr-actions">
@@ -202,6 +416,7 @@ export default function Securities() {
             <th style={{fontWeight:700}}>Photo</th>
             <th style={{fontWeight:700}}>Name</th>
             <th style={{fontWeight:700}}>Status</th>
+            <th style={{fontWeight:700}}>Face</th>
             <th style={{fontWeight:700}}>Code</th>
             <th style={{fontWeight:700}}>Gender</th>
             <th style={{fontWeight:700}}>Mobile</th>
@@ -213,6 +428,12 @@ export default function Securities() {
                 <td><PhotoStamp photo={row.photo} name={row.sname}/></td>
                 <td style={{fontWeight:600}}>{row.sname||"—"}</td>
                 <td>{row.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</td>
+                <td>
+                  {row.hasFace
+                    ? <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:"#22c55e"}}><UserCheck size={12}/>Registered</span>
+                    : <span style={{fontSize:11,color:"var(--text3)"}}>—</span>
+                  }
+                </td>
                 <td className="td-muted" style={{ fontWeight:700, color:"var(--text)" }}>{row.scode||"—"}</td>
                 <td>{row.gender||"—"}</td>
                 <td className="td-muted" style={{ fontWeight:700, color:"var(--text)" }}>{row.smobile1||"—"}</td>
@@ -239,7 +460,7 @@ export default function Securities() {
             </div>
             <div style={{padding:"20px 24px",flex:1}}>
               {/* Photo */}
-              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:"1px solid var(--border)"}}>
+              <div style={{marginBottom:16,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:"1px solid var(--border)"}}>
                 <label className="form-label" style={{marginBottom:10}}>Photo {uploading&&<span style={{fontSize:11,color:"var(--accent)",marginLeft:8}}>Uploading...</span>}</label>
                 <div style={{display:"flex",alignItems:"center",gap:16}}>
                   <PhotoStamp photo={photoSrc||""} name={form.sname||"?"} size={64}/>
@@ -262,6 +483,27 @@ export default function Securities() {
                   </div>
                 </div>
               </div>
+
+              {/* Face Registration */}
+              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:`1px solid ${form.faceDescriptors?.length>0?"#22c55e":"var(--border)"}`}}>
+                <label className="form-label" style={{marginBottom:8}}>Face Registration (for patrol verification)</label>
+                {form.faceDescriptors?.length > 0 ? (
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#22c55e",fontWeight:700}}>
+                      <UserCheck size={16}/> {form.faceDescriptors.length} angle{form.faceDescriptors.length!==1?"s":""} registered
+                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-register</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Capture 5 face angles for identity verification during patrol. No photo needed.</div>
+                    <button className="btn btn-primary btn-sm" onClick={()=>setShowFaceReg(true)}>
+                      <Camera size={13}/> Register Face (5 angles)
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Security Code</label><input name="scode" className="form-input" value={form.scode} onChange={onChange} placeholder="S001"/></div>
                 <div className="form-group">
@@ -339,7 +581,10 @@ export default function Securities() {
                 <div>
                   <div style={{fontWeight:700,fontSize:16}}>{viewRow.sname||"—"}</div>
                   <div style={{fontSize:12,color:"var(--text2)"}}>{viewRow.scode||"—"} · {viewRow.gender||"—"}</div>
-                  <div style={{marginTop:6}}>{viewRow.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}</div>
+                  <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {viewRow.active?<span className="badge badge-in">Active</span>:<span className="badge badge-out">Inactive</span>}
+                    {viewRow.hasFace&&<span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:"#22c55e",padding:"2px 6px",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:4}}><UserCheck size={11}/>Face Registered</span>}
+                  </div>
                 </div>
               </div>
               {[["Mobile 1",viewRow.smobile1||"—"],["Mobile 2",viewRow.smobile2||"—"],["Address 1",viewRow.address1||"—"],["Address 2",viewRow.address2||"—"],["Address 3",viewRow.address3||"—"]].map(([l,v])=>(

@@ -75,7 +75,8 @@ const fmtDate = v => {
 // ─── Identity Verification Modal ─────────────────────────────────────────────
 // Auto Scan: face stays in oval for ~3 s → auto-verifies against registered photo.
 // Manual: one tap → instant verify from live video frame. No photo saved.
-function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
+// referenceDescriptors: Float32Array[] — one or more registered face descriptors
+function FaceCaptureModal({ referenceDescriptors, onVerified, onCancel }) {
   const [stream, setStream]         = useState(null);
   const [modelsReady, setModelsReady] = useState(false);
   const [initError, setInitError]   = useState(null);
@@ -148,7 +149,9 @@ function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
     setVerifying(true);
     setAutoScan(false);
     stopScan();
-    const distance = faceapi.euclideanDistance(referenceDescriptor, descriptor);
+    // Find min distance across all registered reference descriptors
+    const refs = Array.isArray(referenceDescriptors) ? referenceDescriptors : [referenceDescriptors];
+    const distance = Math.min(...refs.map(rd => faceapi.euclideanDistance(rd, descriptor)));
     setMatchDistance(distance);
     if (distance < 0.6) {
       setVerifyResult("matched");
@@ -158,7 +161,7 @@ function FaceCaptureModal({ referenceDescriptor, onVerified, onCancel }) {
       setVerifyResult("no-match");
       setVerifying(false);
     }
-  }, [referenceDescriptor, stream, onVerified, stopScan]);
+  }, [referenceDescriptors, stream, onVerified, stopScan]);
 
   const startScan = useCallback(() => {
     if (scanIntervalRef.current) return;
@@ -535,11 +538,11 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
         return;
       }
 
-      // Ensure both descriptors are Float32Array — React state preserves typed arrays
-      // but we convert explicitly for safety
-      const ref     = refDescriptor instanceof Float32Array ? refDescriptor : new Float32Array(Object.values(refDescriptor));
-      const selfie  = selfieDescriptor instanceof Float32Array ? selfieDescriptor : new Float32Array(Object.values(selfieDescriptor));
-      const distance = faceapi.euclideanDistance(ref, selfie);
+      // Support both single descriptor and array of descriptors (5-angle registration)
+      const selfie = selfieDescriptor instanceof Float32Array ? selfieDescriptor : new Float32Array(Object.values(selfieDescriptor));
+      const refs = Array.isArray(refDescriptor) ? refDescriptor : [refDescriptor];
+      const toF32 = d => d instanceof Float32Array ? d : new Float32Array(Object.values(d));
+      const distance = Math.min(...refs.map(rd => faceapi.euclideanDistance(toF32(rd), selfie)));
 
       // distance < 0.5 = strong match, 0.5–0.6 = likely same person, > 0.6 = different
       if (distance < 0.6) {
@@ -998,33 +1001,47 @@ export default function SecurityPatrol() {
         const uid = Number(r.UId ?? r.uid ?? 0);
         return uid > 0 && uid === Number(user?.userId);
       });
-      // Photo field: SP returns PhotoPath (raw); service normalises to photo/photoPath
-      const rawPhoto = (() => {
-        if (!me) return "";
-        const p = me.PhotoPath ?? me.photoPath ?? me.photo ?? me.Photo ?? "";
-        if (!p || p === "/Security/") return "";
-        if (p.startsWith("http") || p.startsWith("data:")) return p;
-        return "";
-      })();
       if (!me) {
         setToast({ type: "error", msg: `Security profile not found (code: ${user?.securityCode || user?.userName || user?.userId}) — contact admin.` });
         return;
       }
-      if (!rawPhoto) {
-        setToast({ type: "error", msg: "No face photo on file — ask admin to upload your photo in Setup → Securities." });
+
+      // Parse PhotoPath — may be JSON {"photo":"...","descriptors":[...]} or plain photo URL
+      const rawPath = me.PhotoPath ?? me.photoPath ?? me.photo ?? me.Photo ?? "";
+      let referenceDescriptors = null;
+      let photoForFallback = null;
+
+      if (rawPath && rawPath.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(rawPath);
+          photoForFallback = parsed.photo || "";
+          if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
+            referenceDescriptors = parsed.descriptors.map(d => new Float32Array(d));
+          }
+        } catch { /* malformed JSON — fall through */ }
+      } else if (rawPath && rawPath !== "/Security/") {
+        if (rawPath.startsWith("http") || rawPath.startsWith("data:")) photoForFallback = rawPath;
+      }
+
+      if (!referenceDescriptors && !photoForFallback) {
+        setToast({ type: "error", msg: "No face data registered — ask admin to register your face in Setup → Securities." });
         return;
       }
 
-      // Ensure models are loaded, then extract descriptor from registered photo
       await loadFaceModels();
-      const refDescriptor = await extractDescriptorFromPhoto(rawPhoto);
-      if (!refDescriptor) {
-        setToast({ type: "error", msg: "Registered photo has no detectable face — ask admin to re-upload a clear face photo." });
-        return;
+
+      if (!referenceDescriptors) {
+        // Fall back to extracting descriptor from registered photo
+        const desc = await extractDescriptorFromPhoto(photoForFallback);
+        if (!desc) {
+          setToast({ type: "error", msg: "Registered photo has no detectable face — ask admin to register face data in Setup → Securities." });
+          return;
+        }
+        referenceDescriptors = [desc];
       }
 
       // Show live face verification modal; session is only created after match
-      setPendingRef(refDescriptor);
+      setPendingRef(referenceDescriptors);
     } catch (err) {
       setToast({ type: "error", msg: err.response?.data?.message || "Failed to load security profile" });
     } finally { setCreating(false); }
@@ -1074,7 +1091,7 @@ export default function SecurityPatrol() {
       <>
         <Toast toast={toast} onClose={() => setToast(null)} />
         <FaceCaptureModal
-          referenceDescriptor={pendingRef}
+          referenceDescriptors={pendingRef}
           onVerified={handleFaceVerified}
           onCancel={handleFaceCancel}
         />
