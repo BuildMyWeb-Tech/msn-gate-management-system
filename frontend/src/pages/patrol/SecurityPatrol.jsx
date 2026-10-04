@@ -990,19 +990,22 @@ export default function SecurityPatrol() {
       // Fetch the logged-in security's profile and registered face photo
       const secRes = await api.get("/setup/securities");
       const rows = Array.isArray(secRes.data) ? secRes.data : [];
+      // SP returns raw field names: SCode, UId, PhotoPath — handle both raw and normalised forms
       const me = rows.find(r => {
-        // Match by SCode (login username e.g. "S002") — most reliable
-        const code = r.code?.toLowerCase() || "";
+        const code = (r.SCode ?? r.scode ?? r.code ?? "").toLowerCase();
         if (code && user?.securityCode && code === user.securityCode.toLowerCase()) return true;
-        // Also try matching against userName (in case securityCode not yet in stored session)
         if (code && user?.userName && code === user.userName.toLowerCase()) return true;
-        // Last resort: uid match
-        return Number(r.uid) === Number(user?.userId);
+        const uid = Number(r.UId ?? r.uid ?? 0);
+        return uid > 0 && uid === Number(user?.userId);
       });
-      // API normalizes: photo = base64 data URI (or ""), photoPath = original (Cloudinary URL or server path)
-      const photoB64 = me?.photo || "";
-      const photoUrl = me?.photoPath || "";
-      const rawPhoto = photoB64 || (photoUrl.startsWith("http") ? photoUrl : "");
+      // Photo field: SP returns PhotoPath (raw); service normalises to photo/photoPath
+      const rawPhoto = (() => {
+        if (!me) return "";
+        const p = me.PhotoPath ?? me.photoPath ?? me.photo ?? me.Photo ?? "";
+        if (!p || p === "/Security/") return "";
+        if (p.startsWith("http") || p.startsWith("data:")) return p;
+        return "";
+      })();
       if (!me) {
         setToast({ type: "error", msg: `Security profile not found (code: ${user?.securityCode || user?.userName || user?.userId}) — contact admin.` });
         return;
