@@ -376,48 +376,28 @@ function FaceCaptureModal({ referenceDescriptors, onVerified, onCancel }) {
 }
 
 // ─── Validate Patrol Point Modal ─────────────────────────────────────────────
+// Flow: GPS locate → show found point → guard taps Confirm → checkpoint logged
+// No selfie, no camera, no face check — face was verified once at patrol start.
 function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
-  const [step, setStep]             = useState("locating"); // locating | found | selfie | verifying | face-checking
-  const [foundPoint, setFoundPoint] = useState(null);
-  const [stream, setStream]         = useState(null);
-  const [selfieBlob, setSelfieBlob] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [faceStatus, setFaceStatus] = useState(""); // "" | "matched:x" | "no-match:x" | "no-face"
-  const [faceInFrame, setFaceInFrame] = useState(false); // true when selfie camera detects a face
-  const [selfieStatus, setSelfieStatus] = useState("Position your face in the oval");
-  const [gpsProgress, setGpsProgress] = useState(0); // 0-3 (shows Reading n/3)
-  const [capturedCoords, setCapturedCoords] = useState(null); // { lat, lng } — temp debug display
-  const videoRef          = useRef(null); // live camera preview
-  const capturedCanvasRef = useRef(null); // holds snapshot for face comparison
-  const selfieIntervalRef = useRef(null); // face detection polling for selfie
+  const [step, setStep]               = useState("locating"); // locating | found | verifying
+  const [foundPoint, setFoundPoint]   = useState(null);
+  const [gpsProgress, setGpsProgress] = useState(0);
+  const [capturedCoords, setCapturedCoords] = useState(null);
 
-  const stopStream = useCallback(() => {
-    if (stream) { stream.getTracks().forEach(t => t.stop()); setStream(null); }
-  }, [stream]);
-  useEffect(() => () => stopStream(), [stopStream]);
-  useEffect(() => {
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-  }, [stream]);
-
-  // Step 1 — take 3 GPS readings, weighted average by accuracy, then validate
+  // GPS: 3 readings → weighted average → validate against patrol points
   useEffect(() => {
     if (!navigator.geolocation) {
       setToast({ type: "error", msg: "GPS not supported on this device" });
       onClose();
       return;
     }
-    const SAMPLES = 3;
     const readings = [];
-
     const takeReading = (n) => {
       setGpsProgress(n);
       navigator.geolocation.getCurrentPosition(
         async pos => {
           readings.push({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy });
-          if (n < SAMPLES) {
+          if (n < 3) {
             setTimeout(() => takeReading(n + 1), 800);
           } else {
             const totalWeight = readings.reduce((s, r) => s + 1 / r.acc, 0);
@@ -425,7 +405,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
             const avgLng = readings.reduce((s, r) => s + r.lng / r.acc, 0) / totalWeight;
             const coords = { lat: avgLat.toFixed(6), lng: avgLng.toFixed(6) };
             setCapturedCoords(coords);
-            onGpsRead?.(coords); // lift coords to parent immediately — before SP call
+            onGpsRead?.(coords);
             try {
               const res = await validatePatrolPoint(avgLat, avgLng);
               if (res.success && res.data) {
@@ -449,140 +429,22 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
       );
     };
-
     takeReading(1);
   }, []); // eslint-disable-line
 
-  // Stop selfie detection polling
-  const stopSelfieDetection = useCallback(() => {
-    if (selfieIntervalRef.current) { clearInterval(selfieIntervalRef.current); selfieIntervalRef.current = null; }
-  }, []);
-
-  // Start face detection polling when selfie camera is live
-  useEffect(() => {
-    if (step === "selfie" && stream) {
-      const t = setTimeout(() => {
-        selfieIntervalRef.current = setInterval(async () => {
-          const v = videoRef.current;
-          if (!v || v.readyState !== 4) return;
-          try {
-            const d = await faceapi
-              .detectSingleFace(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-              .withFaceLandmarks(true);
-            setFaceInFrame(!!d);
-            setSelfieStatus(d ? "Face detected — press Capture" : "Position your face in the oval");
-          } catch { setFaceInFrame(false); }
-        }, 500);
-      }, 600);
-      return () => { clearTimeout(t); stopSelfieDetection(); };
-    }
-    return stopSelfieDetection;
-  }, [step, stream, stopSelfieDetection]);
-
-  // Step 2 — Open front camera (works on both mobile and desktop via getUserMedia)
-  const openCamera = async () => {
-    setFaceStatus("");
-    setFaceInFrame(false);
-    setSelfieStatus("Position your face in the oval");
+  const submitCheckpoint = async () => {
+    setStep("verifying");
     try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
+      const res = await logSessionCheckpoint(session.uid, {
+        locationUid:  foundPoint.uid,
+        locationName: foundPoint.name,
       });
-      setStream(s);
-      setStep("selfie");
-    } catch (e) {
-      const msgs = {
-        NotAllowedError: "Camera permission denied — allow in browser settings",
-        PermissionDeniedError: "Camera permission denied",
-        NotFoundError: "No camera found on this device",
-        NotReadableError: "Camera in use by another app — close it and retry",
-        AbortError: "Camera in use by another app — close it and retry",
-      };
-      setToast({ type: "error", msg: msgs[e.name] || `Could not open camera — ${e.message}` });
-    }
-  };
-
-  // Capture selfie frame from live video
-  const captureSelfie = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    stopSelfieDetection();
-    const canvas = document.createElement("canvas");
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    capturedCanvasRef.current = canvas;
-    stopStream();
-    canvas.toBlob(blob => {
-      setSelfieBlob(blob);
-      setPreviewUrl(canvas.toDataURL("image/jpeg", 0.85));
-      const refDescriptor = session?.faceDescriptor;
-      if (refDescriptor) { setStep("face-checking"); verifyFace(refDescriptor, blob); }
-      else { setStep("verifying"); submitCheckpoint(blob); }
-    }, "image/jpeg", 0.85);
-  };
-
-  const verifyFace = async (refDescriptor, blob) => {
-    try {
-      const snapshotCanvas = capturedCanvasRef.current;
-      if (!snapshotCanvas) { setStep("verifying"); submitCheckpoint(blob); return; }
-
-      // Ensure models are loaded — critical if verifyFace is called before
-      // FaceCaptureModal.processCapture finishes loading them
-      await loadFaceModels();
-
-      const selfieDescriptor = await getFaceDescriptor(snapshotCanvas);
-      if (!selfieDescriptor) {
-        setFaceStatus("no-face");
-        return;
-      }
-
-      // Support both single descriptor and array of descriptors (5-angle registration)
-      const selfie = selfieDescriptor instanceof Float32Array ? selfieDescriptor : new Float32Array(Object.values(selfieDescriptor));
-      const refs = Array.isArray(refDescriptor) ? refDescriptor : [refDescriptor];
-      const toF32 = d => d instanceof Float32Array ? d : new Float32Array(Object.values(d));
-      const distance = Math.min(...refs.map(rd => faceapi.euclideanDistance(toF32(rd), selfie)));
-
-      // distance < 0.5 = strong match, 0.5–0.6 = likely same person, > 0.6 = different
-      if (distance < 0.6) {
-        setFaceStatus(`matched:${distance.toFixed(3)}`);
-        setTimeout(() => { setStep("verifying"); submitCheckpoint(blob); }, 1000);
+      if (res.success) {
+        onSuccess({ ...res.data, _gps: capturedCoords });
       } else {
-        setFaceStatus(`no-match:${distance.toFixed(3)}`);
-        setTimeout(() => {
-          setFaceStatus("");
-          setSelfieBlob(null);
-          setPreviewUrl(null);
-          openCamera();
-        }, 3000);
+        setToast({ type: "error", msg: res.message || "Checkpoint log failed" });
+        onClose();
       }
-    } catch (err) {
-      console.warn("[verifyFace] error:", err);
-      // On unexpected error, proceed without blocking the checkpoint
-      setStep("verifying");
-      submitCheckpoint(blob);
-    }
-  };
-
-  const submitCheckpoint = async (blob) => {
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result; // data:image/jpeg;base64,...
-        const res = await logSessionCheckpoint(session.uid, {
-          locationUid: foundPoint.uid,
-          locationName: foundPoint.name,
-          selfieImage: base64,
-        });
-        if (res.success) {
-          onSuccess({ ...res.data, _gps: capturedCoords });
-        } else {
-          setToast({ type: "error", msg: res.message || "Checkpoint log failed" });
-          onClose();
-        }
-      };
-      reader.readAsDataURL(blob);
     } catch (err) {
       setToast({ type: "error", msg: err.response?.data?.message || "Failed to submit checkpoint" });
       onClose();
@@ -590,50 +452,12 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   };
 
   const S = {
-    overlay: {
-      position: "fixed", inset: 0, zIndex: 900,
-      background: "rgba(0,0,0,0.75)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 16,
-    },
-    box: {
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius)",
-      width: "100%", maxWidth: 380,
-      padding: 24,
-      boxShadow: "var(--shadow)",
-    },
-    title: {
-      fontSize: 16, fontWeight: 700,
-      color: "var(--accent)",
-      marginBottom: 20,
-      textAlign: "center",
-    },
-    label: { fontSize: 12, color: "var(--text2)", marginBottom: 6 },
-    pointBox: {
-      background: "var(--surface2)",
-      border: "1px solid var(--accent)",
-      borderRadius: "var(--radius-sm)",
-      padding: "10px 14px",
-      fontSize: 14, fontWeight: 600,
-      color: "var(--text)",
-      marginBottom: 20,
-      display: "flex", alignItems: "center", gap: 8,
-    },
-    btn: {
-      width: "100%", padding: "12px",
-      background: "var(--accent)", color: "#000",
-      border: "none", borderRadius: "var(--radius-sm)",
-      fontSize: 14, fontWeight: 700,
-      cursor: "pointer",
-      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-    },
-    video: {
-      width: "100%", borderRadius: "var(--radius-sm)",
-      background: "#000", marginBottom: 12,
-      aspectRatio: "4/3",
-    },
+    overlay: { position:"fixed", inset:0, zIndex:900, background:"rgba(0,0,0,0.75)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 },
+    box: { background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"100%", maxWidth:380, padding:24, boxShadow:"var(--shadow)" },
+    title: { fontSize:16, fontWeight:700, color:"var(--accent)", marginBottom:20, textAlign:"center" },
+    label: { fontSize:12, color:"var(--text2)", marginBottom:6 },
+    pointBox: { background:"var(--surface2)", border:"1px solid var(--accent)", borderRadius:"var(--radius-sm)", padding:"14px 16px", fontSize:15, fontWeight:700, color:"var(--text)", marginBottom:20, display:"flex", alignItems:"center", gap:10 },
+    btn: { width:"100%", padding:"14px", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:15, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
   };
 
   return (
@@ -642,10 +466,10 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
         <div style={S.title}>Validate Patrol Point</div>
 
         {step === "locating" && (
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <Loader size={32} style={{ color: "var(--accent)", animation: "spin 1s linear infinite", marginBottom: 12 }} />
-            <p style={{ color: "var(--text2)", fontSize: 13 }}>
-              {gpsProgress > 0 ? `Reading ${gpsProgress}/3...` : "Getting GPS location..."}
+          <div style={{ textAlign:"center", padding:"20px 0" }}>
+            <Loader size={32} style={{ color:"var(--accent)", animation:"spin 1s linear infinite", marginBottom:12 }}/>
+            <p style={{ color:"var(--text2)", fontSize:13 }}>
+              {gpsProgress > 0 ? `Reading GPS ${gpsProgress}/3…` : "Getting GPS location…"}
             </p>
             {gpsProgress > 0 && (
               <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:8 }}>
@@ -657,114 +481,26 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
           </div>
         )}
 
-        {(step === "found" || step === "selfie" || step === "verifying" || step === "face-checking") && (
+        {step === "found" && (
           <>
-            <div style={S.label}>Patrol Point</div>
+            <div style={S.label}>Patrol Point Found</div>
             <div style={S.pointBox}>
-              <MapPin size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              <MapPin size={18} style={{ color:"var(--accent)", flexShrink:0 }}/>
               {foundPoint?.name}
             </div>
-            {/* Temporary coordinate display — remove once GPS logic is verified */}
-            {capturedCoords && (
-              <div style={{ padding:"6px 10px", marginBottom:12, background:"rgba(245,158,11,0.07)", border:"1px solid rgba(245,158,11,0.2)", borderRadius:"var(--radius-xs)", fontSize:11, fontFamily:"monospace", color:"var(--text2)" }}>
-                GPS passed to SP: {capturedCoords.lat}, {capturedCoords.lng}
-              </div>
-            )}
+            <button style={S.btn} onClick={submitCheckpoint}>
+              <CheckCircle size={18}/> Confirm &amp; Log
+            </button>
+            <button onClick={onClose} style={{ display:"block", width:"100%", marginTop:10, padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:13, cursor:"pointer" }}>
+              Cancel
+            </button>
           </>
-        )}
-
-        {step === "found" && (
-          <button style={S.btn} onClick={openCamera}>
-            <Camera size={16} /> Take Selfie
-          </button>
-        )}
-
-        {step === "selfie" && (
-          <>
-            {/* Live camera with face-ring overlay */}
-            <div style={{ position:"relative", background:"#000", borderRadius:"var(--radius-sm)", overflow:"hidden", marginBottom:12, aspectRatio:"4/3" }}>
-              <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
-              <div style={{ position:"absolute", left:"10%", right:"10%", top:"8%", bottom:"8%", borderRadius:"50%", border:`3px solid ${faceInFrame ? "#22c55e" : "#475569"}`, transition:"border-color 0.3s, box-shadow 0.3s", boxShadow: faceInFrame ? "0 0 20px rgba(34,197,94,0.55)" : "none", pointerEvents:"none" }}/>
-              <div style={{ position:"absolute", bottom:8, left:"50%", transform:"translateX(-50%)", whiteSpace:"nowrap" }}>
-                <span style={{
-                  display:"inline-flex", alignItems:"center", gap:5,
-                  padding:"4px 12px", borderRadius:20, fontSize:11,
-                  background: faceInFrame ? "rgba(21,128,61,0.88)" : "rgba(15,23,42,0.88)",
-                  color: faceInFrame ? "#86efac" : "#94a3b8",
-                  border:`1px solid ${faceInFrame ? "#166534" : "#334155"}`,
-                }}>
-                  <span style={{ width:6, height:6, borderRadius:"50%", background: faceInFrame ? "#4ade80" : "#475569", display:"inline-block" }}/>
-                  {selfieStatus}
-                </span>
-              </div>
-            </div>
-            {faceInFrame
-              ? <button style={S.btn} onClick={captureSelfie}><Camera size={16}/> Capture</button>
-              : <button style={{ ...S.btn, background:"var(--border)", color:"var(--text2)", cursor:"not-allowed" }} disabled>
-                  <Camera size={16}/> Waiting for face…
-                </button>
-            }
-          </>
-        )}
-
-        {step === "face-checking" && (
-          <div style={{ textAlign: "center", padding: "12px 0" }}>
-            {previewUrl && (
-              <img src={previewUrl} alt="selfie" style={{ width: "100%", borderRadius: "var(--radius-sm)", marginBottom: 12, objectFit: "cover" }} />
-            )}
-            {!faceStatus && (
-              <>
-                <Loader size={24} style={{ color: "var(--accent)", animation: "spin 1s linear infinite", marginBottom: 8 }} />
-                <p style={{ color: "var(--text2)", fontSize: 13 }}>Verifying face...</p>
-              </>
-            )}
-            {faceStatus.startsWith("matched") && (
-              <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, color:"var(--green)", fontWeight:700, fontSize:14, marginBottom:4 }}>
-                  <UserCheck size={18}/> Face Verified
-                </div>
-                <div style={{ fontSize:11, color:"var(--text2)", fontFamily:"monospace" }}>
-                  Similarity: {faceStatus.split(":")[1]} (threshold &lt; 0.6)
-                </div>
-                <div style={{ fontSize:12, color:"var(--text2)", marginTop:4 }}>Logging checkpoint...</div>
-              </div>
-            )}
-            {faceStatus === "no-face" && (
-              <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, color:"var(--red)", fontWeight:600, fontSize:13, marginBottom:8 }}>
-                  <AlertTriangle size={15}/> No face detected
-                </div>
-                <p style={{ fontSize:12, color:"var(--text2)", marginBottom:10 }}>
-                  Ensure your face is clearly visible and well lit.
-                </p>
-                <button
-                  style={{ padding:"7px 16px", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-xs)", fontSize:12, fontWeight:700, cursor:"pointer" }}
-                  onClick={() => { setFaceStatus(""); setSelfieBlob(null); setPreviewUrl(null); openCamera(); }}>
-                  Retry
-                </button>
-              </div>
-            )}
-            {faceStatus.startsWith("no-match") && (
-              <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"var(--radius-xs)", padding:"10px 12px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, color:"var(--red)", fontWeight:600, fontSize:13, marginBottom:4 }}>
-                  <AlertTriangle size={15}/> Face does not match
-                </div>
-                <div style={{ fontSize:11, color:"var(--text2)", fontFamily:"monospace", marginBottom:6 }}>
-                  Distance: {faceStatus.split(":")[1]} (must be &lt; 0.6)
-                </div>
-                <p style={{ fontSize:12, color:"var(--text2)" }}>Retrying camera in 3 seconds...</p>
-              </div>
-            )}
-          </div>
         )}
 
         {step === "verifying" && (
-          <div style={{ textAlign: "center", padding: "12px 0" }}>
-            {previewUrl && (
-              <img src={previewUrl} alt="selfie" style={{ width: "100%", borderRadius: "var(--radius-sm)", marginBottom: 12 }} />
-            )}
-            <Loader size={24} style={{ color: "var(--accent)", animation: "spin 1s linear infinite", marginBottom: 8 }} />
-            <p style={{ color: "var(--text2)", fontSize: 13 }}>Saving checkpoint...</p>
+          <div style={{ textAlign:"center", padding:"20px 0" }}>
+            <Loader size={28} style={{ color:"var(--accent)", animation:"spin 1s linear infinite", marginBottom:10 }}/>
+            <p style={{ color:"var(--text2)", fontSize:13 }}>Saving checkpoint…</p>
           </div>
         )}
       </div>
