@@ -992,7 +992,8 @@ export default function SecurityPatrol() {
 
       // Fetch the logged-in security's profile and registered face photo
       const secRes = await api.get("/setup/securities");
-      const rows = Array.isArray(secRes.data) ? secRes.data : [];
+      const raw = secRes.data;
+      const rows = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
       // SP returns raw field names: SCode, UId, PhotoPath — handle both raw and normalised forms
       const me = rows.find(r => {
         const code = (r.SCode ?? r.scode ?? r.code ?? "").toLowerCase();
