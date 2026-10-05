@@ -11,6 +11,10 @@ import { Shield, Camera, MapPin, RefreshCw, ChevronLeft, Loader, Eye, UserCheck,
 
 // Load face-api models once (lazy, on first need)
 let faceModelsLoaded = false;
+
+// Face verification is required only the first time "New" is clicked per page session.
+// Persists across component remounts (navigating away and back) but resets on page reload.
+let faceVerifiedThisSession = false;
 async function loadFaceModels() {
   if (faceModelsLoaded) return;
   const base = "/models";
@@ -721,6 +725,12 @@ export default function SecurityPatrol() {
   useEffect(() => { if (!activeSession) load(); }, [load, activeSession]);
 
   const handleNew = async () => {
+    // Face was already verified earlier this session — skip camera, create session directly
+    if (faceVerifiedThisSession) {
+      await handleFaceVerified();
+      return;
+    }
+
     setCreating(true);
     try {
       // Pre-warm models in background; will await below if not done yet
@@ -785,20 +795,19 @@ export default function SecurityPatrol() {
   };
 
   const handleFaceVerified = async () => {
+    faceVerifiedThisSession = true; // mark so subsequent "New" clicks skip camera
+    setPendingRef(null);
     try {
       const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
       if (res.success) {
-        const tracked = { ...res.data, _date: date, faceDescriptor: pendingRef };
+        const tracked = { ...res.data, _date: date };
         localSessionsRef.current = [...localSessionsRef.current, tracked];
-        setPendingRef(null);
         setActiveSession(tracked);
       } else {
         setToast({ type: "error", msg: res.message || "Failed to create patrol session" });
-        setPendingRef(null);
       }
     } catch (err) {
       setToast({ type: "error", msg: err.response?.data?.message || "Failed to create patrol" });
-      setPendingRef(null);
     }
   };
 
