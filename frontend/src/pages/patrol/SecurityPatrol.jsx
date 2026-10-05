@@ -755,6 +755,7 @@ export default function SecurityPatrol() {
 
       // Parse PhotoPath — may be JSON {"photo":"...","descriptors":[...]} or plain photo URL
       const rawPath = me.PhotoPath ?? me.photoPath ?? me.photo ?? me.Photo ?? "";
+      console.log("[Patrol] S002 PhotoPath:", rawPath?.slice(0, 80), "| length:", rawPath?.length);
       let referenceDescriptors = null;
       let photoForFallback = null;
 
@@ -765,13 +766,18 @@ export default function SecurityPatrol() {
           if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
             referenceDescriptors = parsed.descriptors.map(d => new Float32Array(d));
           }
-        } catch { /* malformed JSON — fall through */ }
+        } catch (e) {
+          console.error("[Patrol] PhotoPath JSON parse failed:", e.message, "| First 100 chars:", rawPath?.slice(0, 100));
+        }
       } else if (rawPath && rawPath !== "/Security/") {
         if (rawPath.startsWith("http") || rawPath.startsWith("data:")) photoForFallback = rawPath;
       }
 
       if (!referenceDescriptors && !photoForFallback) {
-        setToast({ type: "error", msg: "No face data registered — ask admin to register your face in Setup → Securities." });
+        const hint = !rawPath || rawPath === "/Security/" || rawPath === ""
+          ? "Face not saved in DB — register face in Setup → Securities then click Save."
+          : "Face data could not be read — try re-registering in Setup → Securities.";
+        setToast({ type: "error", msg: hint });
         return;
       }
 

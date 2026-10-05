@@ -79,7 +79,7 @@ function normalise(r) {
   }
 }
 
-const EMPTY = { uid:0, scode:"", sname:"", gender:"", smobile1:"", smobile2:"", spassword:"", address1:"", address2:"", address3:"", address4:"", address5:"", photo:"", photoUrl:"", faceDescriptors:null, active:true };
+const EMPTY = { uid:0, scode:"", sname:"", gender:"", smobile1:"", smobile2:"", spassword:"", address1:"", address2:"", address3:"", address4:"", address5:"", photo:"", photoUrl:"", faceDescriptors:null, faceDescriptorsSaved:false, active:true };
 
 function getPhotoSrc(p) {
   if (!p) return null;
@@ -279,7 +279,7 @@ export default function Securities() {
     const existingDescriptors = row.rawDescriptors?.length > 0
       ? row.rawDescriptors.map(d => new Float32Array(d))
       : null;
-    setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "", faceDescriptors: existingDescriptors });
+    setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "", faceDescriptors: existingDescriptors, faceDescriptorsSaved: !!existingDescriptors });
     setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true);
   };
   const closeForm = () => { setShowForm(false); setCameraOn(false); setShowFaceReg(false); stream?.getTracks().forEach(t=>t.stop()); setStream(null); };
@@ -323,8 +323,8 @@ export default function Securities() {
 
   const handleFaceRegDone = (descriptors) => {
     setShowFaceReg(false);
-    setForm(p => ({ ...p, faceDescriptors: descriptors }));
-    setToast({ type:"success", msg:`Face registered: ${descriptors.length} angles captured ✓` });
+    setForm(p => ({ ...p, faceDescriptors: descriptors, faceDescriptorsSaved: false }));
+    setToast({ type:"info", msg:`${descriptors.length} angles captured — click Save to store` });
   };
 
   const onSave = async () => {
@@ -489,15 +489,24 @@ export default function Securities() {
               </div>
 
               {/* Face Registration */}
-              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:`1px solid ${form.faceDescriptors?.length>0?"#22c55e":"var(--border)"}`}}>
+              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:`1px solid ${form.faceDescriptors?.length>0?(form.faceDescriptorsSaved?"#22c55e":"#f59e0b"):"var(--border)"}`}}>
                 <label className="form-label" style={{marginBottom:8}}>Face Registration (for patrol verification)</label>
                 {form.faceDescriptors?.length > 0 ? (
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#22c55e",fontWeight:700}}>
-                      <UserCheck size={16}/> {form.faceDescriptors.length} angle{form.faceDescriptors.length!==1?"s":""} registered
+                  form.faceDescriptorsSaved ? (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#22c55e",fontWeight:700}}>
+                        <UserCheck size={16}/> {form.faceDescriptors.length} angles registered ✓
+                      </div>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-register</button>
                     </div>
-                    <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-register</button>
-                  </div>
+                  ) : (
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#f59e0b",fontWeight:700,marginBottom:8}}>
+                        <UserCheck size={16}/> {form.faceDescriptors.length} angles captured — click Save to store
+                      </div>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-capture</button>
+                    </div>
+                  )
                 ) : (
                   <div>
                     <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Capture 5 face angles for identity verification during patrol. No photo needed.</div>
