@@ -343,9 +343,13 @@ export default function Securities() {
       const photoUrl = form.photoUrl || form.photo || "";
       let photoPath = "/Security/";
       if (form.faceDescriptors?.length > 0) {
+        // Round to 2 decimal places: keeps JSON under ~3300 chars
+        // (SQL Server JSON_VALUE silently truncates > 4000 chars → loses data)
         photoPath = JSON.stringify({
           photo: photoUrl,
-          descriptors: form.faceDescriptors.map(d => Array.from(d)),
+          descriptors: form.faceDescriptors.map(d =>
+            Array.from(d).map(v => Math.round(v * 100) / 100)
+          ),
         });
       } else if (photoUrl) {
         photoPath = photoUrl;
