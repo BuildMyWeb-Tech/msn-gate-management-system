@@ -733,65 +733,39 @@ export default function SecurityPatrol() {
 
     setCreating(true);
     try {
-      // Pre-warm models in background; will await below if not done yet
+      // Pre-warm models in background
       loadFaceModels().catch(() => {});
 
-      // Fetch the logged-in security's profile and registered face photo
-      const secRes = await api.get("/setup/securities");
-      const raw = secRes.data;
-      const rows = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
-      // SP returns raw field names: SCode, UId, PhotoPath — handle both raw and normalised forms
-      const me = rows.find(r => {
-        const code = (r.SCode ?? r.scode ?? r.code ?? "").toLowerCase();
-        if (code && user?.securityCode && code === user.securityCode.toLowerCase()) return true;
-        if (code && user?.userName && code === user.userName.toLowerCase()) return true;
-        const uid = Number(r.UId ?? r.uid ?? 0);
-        return uid > 0 && uid === Number(user?.userId);
-      });
-      if (!me) {
-        setToast({ type: "error", msg: `Security profile not found (code: ${user?.securityCode || user?.userName || user?.userId}) — contact admin.` });
+      // Fetch face data for this guard via PR_Get_FaceData (uid = logged-in userId)
+      const faceRes = await api.get(`/setup/securities/facedata?uid=${user?.userId || 0}`);
+      const faceRows = faceRes.data?.data || [];
+      const faceRow = faceRows[0] || null;
+      const rawFaceData = faceRow
+        ? (faceRow.FData ?? faceRow.fdata ?? faceRow.FaceData ?? faceRow.facedata ?? null)
+        : null;
+
+      if (!rawFaceData) {
+        setToast({ type: "error", msg: "Face not registered — ask admin to register your face in Setup → Securities." });
         return;
       }
 
-      // Parse PhotoPath — may be JSON {"photo":"...","descriptors":[...]} or plain photo URL
-      const rawPath = me.PhotoPath ?? me.photoPath ?? me.photo ?? me.Photo ?? "";
-      console.log("[Patrol] S002 PhotoPath:", rawPath?.slice(0, 80), "| length:", rawPath?.length);
       let referenceDescriptors = null;
-      let photoForFallback = null;
-
-      if (rawPath && rawPath.startsWith("{")) {
-        try {
-          const parsed = JSON.parse(rawPath);
-          photoForFallback = parsed.photo || "";
-          if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
-            referenceDescriptors = parsed.descriptors.map(d => new Float32Array(d));
-          }
-        } catch (e) {
-          console.error("[Patrol] PhotoPath JSON parse failed:", e.message, "| First 100 chars:", rawPath?.slice(0, 100));
+      try {
+        const parsed = JSON.parse(rawFaceData);
+        if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
+          referenceDescriptors = parsed.descriptors.map(d => new Float32Array(d));
         }
-      } else if (rawPath && rawPath !== "/Security/") {
-        if (rawPath.startsWith("http") || rawPath.startsWith("data:")) photoForFallback = rawPath;
+      } catch {
+        setToast({ type: "error", msg: "Face data is corrupt — ask admin to re-register your face." });
+        return;
       }
 
-      if (!referenceDescriptors && !photoForFallback) {
-        const hint = !rawPath || rawPath === "/Security/" || rawPath === ""
-          ? "Face not saved in DB — register face in Setup → Securities then click Save."
-          : "Face data could not be read — try re-registering in Setup → Securities.";
-        setToast({ type: "error", msg: hint });
+      if (!referenceDescriptors) {
+        setToast({ type: "error", msg: "No face descriptors found — ask admin to re-register your face." });
         return;
       }
 
       await loadFaceModels();
-
-      if (!referenceDescriptors) {
-        // Fall back to extracting descriptor from registered photo
-        const desc = await extractDescriptorFromPhoto(photoForFallback);
-        if (!desc) {
-          setToast({ type: "error", msg: "Registered photo has no detectable face — ask admin to register face data in Setup → Securities." });
-          return;
-        }
-        referenceDescriptors = [desc];
-      }
 
       // Show live face verification modal; session is only created after match
       setPendingRef(referenceDescriptors);

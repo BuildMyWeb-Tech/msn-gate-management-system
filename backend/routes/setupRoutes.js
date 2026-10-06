@@ -84,6 +84,27 @@ router.post("/securities", gmsProtect, async (req, res, next) => {
   } catch(err) { next(err); }
 });
 
+// GET /setup/securities/facedata?uid=0   (uid=0 → all; uid>0 → single guard)
+router.get("/securities/facedata", gmsProtect, async (req, res, next) => {
+  try {
+    const uid = Number(req.query.uid) || 0;
+    const rows = await repo.getFaceData({ uid, companyId: getCompanyId(req) });
+    res.json({ success:true, data:rows });
+  } catch(err) { next(err); }
+});
+
+// PUT /setup/securities/:uid/facedata   — calls PR_Update_Facedata
+router.put("/securities/:uid/facedata", gmsProtect, async (req, res, next) => {
+  try {
+    const uid = Number(req.params.uid);
+    const { faceData } = req.body;
+    if (!uid)      return res.status(400).json({ success:false, message:"Invalid uid" });
+    if (!faceData) return res.status(400).json({ success:false, message:"faceData is required" });
+    const row = await repo.updateFaceData({ uid, faceData });
+    res.json({ success:true, message:row?.ResponseMessage ?? "Face data updated" });
+  } catch(err) { next(err); }
+});
+
 router.delete("/securities/:uid", gmsProtect, async (req, res, next) => {
   try {
     const uid = Number(req.params.uid);

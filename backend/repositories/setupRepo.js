@@ -97,8 +97,33 @@ async function iudSecurity(jsonData) {
   return row;
 }
 
+// PR_Update_Facedata @FData nvarchar(max), @uid bigint
+async function updateFaceData({ uid, faceData }) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("FData", sql.NVarChar(sql.MAX), faceData)
+    .input("uid",   sql.BigInt,            uid)
+    .execute("PR_Update_Facedata");
+  const row =
+    result.recordset?.length > 0       ? result.recordset[0] :
+    result.recordsets?.[0]?.length > 0 ? result.recordsets[0][0] : null;
+  return row;
+}
+
+// PR_Get_FaceData @Uid bigint, @Companyid bigint
+// uid=0 → all guards for company; uid>0 → single guard
+async function getFaceData({ uid, companyId }) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("Uid",       sql.BigInt, uid)
+    .input("Companyid", sql.BigInt, companyId)
+    .execute("PR_Get_FaceData");
+  return result.recordset || [];
+}
+
 module.exports = {
   getGeneralGrid, iudGeneral, getSetupDropdown,
   getLocationGrid, iudLocation,
   getSecurityGrid, iudSecurity,
+  updateFaceData, getFaceData,
 };

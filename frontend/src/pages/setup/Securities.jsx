@@ -262,9 +262,17 @@ export default function Securities() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await api.get("/setup/securities");
-      const raw = r.data?.data || [];
-      setRows(raw.map(normalise));
+      const [secRes, faceRes] = await Promise.all([
+        api.get("/setup/securities"),
+        api.get("/setup/securities/facedata?uid=0"),
+      ]);
+      const raw      = secRes.data?.data  || [];
+      const faceRows = faceRes.data?.data || [];
+      const faceUids = new Set(faceRows.map(f => Number(f.Uid ?? f.uid ?? 0)).filter(Boolean));
+      setRows(raw.map(r => {
+        const n = normalise(r);
+        return { ...n, hasFace: faceUids.has(n.uid) };
+      }));
     } catch(e) {
       console.error("[Securities load]", e);
       setToast({type:"error", msg:"Failed to load: " + (e.response?.data?.message || e.message)});
@@ -274,11 +282,23 @@ export default function Securities() {
   useEffect(() => { load(); }, [load]);
 
   const openNew  = () => { setForm(EMPTY); setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true); };
-  const openEdit = row => {
+  const openEdit = async row => {
     const src = getPhotoSrc(row.photo);
-    const existingDescriptors = row.rawDescriptors?.length > 0
-      ? row.rawDescriptors.map(d => new Float32Array(d))
-      : null;
+    // Fetch face data from dedicated SP
+    let existingDescriptors = null;
+    try {
+      const faceRes = await api.get(`/setup/securities/facedata?uid=${row.uid}`);
+      const faceRows = faceRes.data?.data || [];
+      if (faceRows.length > 0) {
+        const raw = faceRows[0].FData ?? faceRows[0].fdata ?? faceRows[0].FaceData ?? faceRows[0].facedata ?? null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.descriptors) && parsed.descriptors.length > 0) {
+            existingDescriptors = parsed.descriptors.map(d => new Float32Array(d));
+          }
+        }
+      }
+    } catch { /* no face data or fetch error — treat as unregistered */ }
     setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "", faceDescriptors: existingDescriptors, faceDescriptorsSaved: !!existingDescriptors });
     setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true);
   };
@@ -339,21 +359,9 @@ export default function Securities() {
       const now=new Date();
       const localNow=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}.${String(now.getMilliseconds()).padStart(3,"0")}`;
 
-      // Build PhotoPath: if face descriptors registered, store JSON with both photo + descriptors
+      // PhotoPath stores photo URL only — face data is saved separately via PR_Update_Facedata
       const photoUrl = form.photoUrl || form.photo || "";
-      let photoPath = "/Security/";
-      if (form.faceDescriptors?.length > 0) {
-        // Round to 2 decimal places: keeps JSON under ~3300 chars
-        // (SQL Server JSON_VALUE silently truncates > 4000 chars → loses data)
-        photoPath = JSON.stringify({
-          photo: photoUrl,
-          descriptors: form.faceDescriptors.map(d =>
-            Array.from(d).map(v => Math.round(v * 100) / 100)
-          ),
-        });
-      } else if (photoUrl) {
-        photoPath = photoUrl;
-      }
+      const photoPath = photoUrl || "/Security/";
 
       const payload = JSON.stringify({
         UId:       form.uid||0,
@@ -378,6 +386,22 @@ export default function Securities() {
       });
       const r = await api.post("/setup/securities",{json:payload});
       if(r.data?.success===false){setToast({type:"error",msg:r.data.message||"Failed"});return;}
+
+      // Save face data separately via PR_Update_Facedata (edit mode only, only when newly captured)
+      if (form.uid > 0 && form.faceDescriptors?.length > 0 && !form.faceDescriptorsSaved) {
+        try {
+          const faceData = JSON.stringify({
+            descriptors: form.faceDescriptors.map(d =>
+              Array.from(d).map(v => Math.round(v * 100) / 100)
+            ),
+          });
+          await api.put(`/setup/securities/${form.uid}/facedata`, { faceData });
+        } catch(fe) {
+          setToast({type:"error", msg:"Guard saved but face data failed to save — try again"});
+          setSaving(false); return;
+        }
+      }
+
       setToast({type:"success",msg:form.uid?"Security updated":"Security added"});
       closeForm(); load();
     } catch(err){ setToast({type:"error",msg:err.response?.data?.message||"Failed"}); }
@@ -488,8 +512,8 @@ export default function Securities() {
                 </div>
               </div>
 
-              {/* Face Registration */}
-              <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:`1px solid ${form.faceDescriptors?.length>0?(form.faceDescriptorsSaved?"#22c55e":"#f59e0b"):"var(--border)"}`}}>
+              {/* Face Registration — edit mode only (uid > 0) */}
+              {form.uid > 0 && <div style={{marginBottom:20,padding:16,background:"var(--surface2)",borderRadius:"var(--radius-sm)",border:`1px solid ${form.faceDescriptors?.length>0?(form.faceDescriptorsSaved?"#22c55e":"#f59e0b"):"var(--border)"}`}}>
                 <label className="form-label" style={{marginBottom:8}}>Face Registration (for patrol verification)</label>
                 {form.faceDescriptors?.length > 0 ? (
                   form.faceDescriptorsSaved ? (
@@ -515,7 +539,7 @@ export default function Securities() {
                     </button>
                   </div>
                 )}
-              </div>
+              </div>}
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Security Code</label><input name="scode" className="form-input" value={form.scode} onChange={onChange} placeholder="S001"/></div>
