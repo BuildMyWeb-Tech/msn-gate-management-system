@@ -736,9 +736,17 @@ export default function SecurityPatrol() {
       // Pre-warm models in background
       loadFaceModels().catch(() => {});
 
-      // Fetch face data for this guard via PR_Get_FaceData (uid = logged-in userId)
-      const faceRes = await api.get(`/setup/securities/facedata?uid=${user?.userId || 0}`);
-      const faceRows = faceRes.data?.data || [];
+      // Fetch face data for this guard via PR_Get_FaceData
+      // Try specific uid first; if SP returns empty (known SP bug), fall back to uid=0 and filter
+      const myUid = user?.userId || 0;
+      let faceRows = [];
+      const faceRes = await api.get(`/setup/securities/facedata?uid=${myUid}`);
+      faceRows = faceRes.data?.data || [];
+      if (faceRows.length === 0 && myUid > 0) {
+        const allRes = await api.get(`/setup/securities/facedata?uid=0`);
+        const allRows = allRes.data?.data || [];
+        faceRows = allRows.filter(r => Number(r.Uid ?? r.uid ?? 0) === myUid);
+      }
       const faceRow = faceRows[0] || null;
       const rawFaceData = faceRow
         ? (faceRow.FData ?? faceRow.fdata ?? faceRow.FaceData ?? faceRow.facedata ?? null)
