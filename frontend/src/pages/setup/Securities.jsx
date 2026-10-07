@@ -98,7 +98,7 @@ function PhotoStamp({ photo, name, size=32 }) {
 }
 
 // ── 5-angle Face Registration Modal ───────────────────────────
-function FaceRegistrationModal({ onDone, onCancel }) {
+function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
   const [stepIdx, setStepIdx]         = useState(0);
   const [captured, setCaptured]       = useState([]);
   const [stream, setStream]           = useState(null);
@@ -107,6 +107,7 @@ function FaceRegistrationModal({ onDone, onCancel }) {
   const [capturing, setCapturing]     = useState(false);
   const [initError, setInitError]     = useState(null);
   const [retryKey, setRetryKey]       = useState(0);
+  const [duplicateGuard, setDuplicateGuard] = useState(null); // {sname, scode} if duplicate found
   const videoRef    = useRef(null);
   const detectRef   = useRef(null);
 
@@ -175,6 +176,19 @@ function FaceRegistrationModal({ onDone, onCancel }) {
         setFaceDetected(false);
       } else {
         stream?.getTracks().forEach(t => t.stop());
+        // Check for duplicate face against all other registered guards
+        if (existingGuards.length > 0) {
+          const match = existingGuards.find(guard => {
+            if (!guard.descriptors?.length) return false;
+            const minDist = Math.min(
+              ...newCaptured.flatMap(cap =>
+                guard.descriptors.map(ref => faceapi.euclideanDistance(cap, ref))
+              )
+            );
+            return minDist < 0.6;
+          });
+          if (match) { setDuplicateGuard(match); setCapturing(false); return; }
+        }
         onDone(newCaptured);
       }
     } catch { /* ignore */ }
@@ -185,9 +199,36 @@ function FaceRegistrationModal({ onDone, onCancel }) {
     if (detectRef.current) { clearInterval(detectRef.current); detectRef.current = null; }
     stream?.getTracks().forEach(t => t.stop());
     setStream(null); setFaceDetected(false); setCapturing(false);
-    setInitError(null); setCaptured([]); setStepIdx(0);
+    setInitError(null); setCaptured([]); setStepIdx(0); setDuplicateGuard(null);
     setRetryKey(k => k+1);
   };
+
+  // Duplicate face error screen
+  if (duplicateGuard) {
+    return (
+      <div style={{ position:"fixed", inset:0, zIndex:600, background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+        <div style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", width:"min(400px,96vw)", padding:28, textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
+          <div style={{ fontWeight:700, fontSize:16, color:"#ef4444", marginBottom:8 }}>Face Already Registered</div>
+          <div style={{ fontSize:13, color:"var(--text2)", marginBottom:6 }}>
+            This face matches an existing guard:
+          </div>
+          <div style={{ fontWeight:700, fontSize:15, color:"var(--text)", background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"10px 16px", marginBottom:20 }}>
+            {duplicateGuard.sname || "Unknown"}{duplicateGuard.scode ? ` (${duplicateGuard.scode})` : ""}
+          </div>
+          <div style={{ fontSize:12, color:"var(--text2)", marginBottom:20 }}>
+            Each guard must have a unique face. Please use a different person or update the existing guard's record.
+          </div>
+          <button onClick={doRetry} style={{ width:"100%", padding:"11px 0", background:"var(--accent)", color:"#000", border:"none", borderRadius:"var(--radius-sm)", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:8 }}>
+            Try Again
+          </button>
+          <button onClick={onCancel} style={{ width:"100%", padding:"9px 0", background:"none", color:"var(--text2)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const step = FACE_STEPS[stepIdx] || FACE_STEPS[0];
   const ringColor = faceDetected ? "#22c55e" : "#475569";
@@ -254,7 +295,8 @@ export default function Securities() {
   const [uploading,setUploading]     = useState(false);
   const [cameraOn,setCameraOn]       = useState(false);
   const [viewRow,setViewRow]         = useState(null);
-  const [showFaceReg,setShowFaceReg] = useState(false);
+  const [showFaceReg,setShowFaceReg]       = useState(false);
+  const [faceRegGuards,setFaceRegGuards]   = useState([]); // existing guards' face data for duplicate check
   const videoRef = useRef(null);
   const [stream,setStream]           = useState(null);
   const fileRef  = useRef(null);
@@ -302,7 +344,7 @@ export default function Securities() {
     setForm({ ...EMPTY, ...row, photoUrl: src && src.startsWith("http") ? row.photo : "", photo: "", faceDescriptors: existingDescriptors, faceDescriptorsSaved: !!existingDescriptors });
     setErrors({}); setCameraOn(false); setShowFaceReg(false); setShowForm(true);
   };
-  const closeForm = () => { setShowForm(false); setCameraOn(false); setShowFaceReg(false); stream?.getTracks().forEach(t=>t.stop()); setStream(null); };
+  const closeForm = () => { setShowForm(false); setCameraOn(false); setShowFaceReg(false); setFaceRegGuards([]); stream?.getTracks().forEach(t=>t.stop()); setStream(null); };
   const onChange  = e => { setForm(p=>({...p,[e.target.name]:e.target.value})); if(errors[e.target.name])setErrors(p=>({...p,[e.target.name]:""})); };
 
   const openCam = async () => {
@@ -343,8 +385,39 @@ export default function Securities() {
 
   const handleFaceRegDone = (descriptors) => {
     setShowFaceReg(false);
+    setFaceRegGuards([]);
     setForm(p => ({ ...p, faceDescriptors: descriptors, faceDescriptorsSaved: false }));
     setToast({ type:"info", msg:`${descriptors.length} angles captured — click Save to store` });
+  };
+
+  // Open face registration: pre-load all other guards' face data for duplicate check
+  const openFaceReg = async () => {
+    try {
+      const faceRes = await api.get("/setup/securities/facedata?uid=0");
+      const faceRows = faceRes.data?.data || [];
+      const guards = faceRows
+        .filter(f => Number(f.Uid ?? f.uid ?? 0) !== form.uid) // exclude current guard
+        .map(f => {
+          const uid = Number(f.Uid ?? f.uid ?? 0);
+          const raw = f.FData ?? f.fdata ?? f.FaceData ?? f.facedata ?? null;
+          let descriptors = null;
+          try {
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed.descriptors)) {
+                descriptors = parsed.descriptors.map(d => new Float32Array(d));
+              }
+            }
+          } catch {}
+          const guardRow = rows.find(r => r.uid === uid);
+          return { uid, sname: guardRow?.sname || "", scode: guardRow?.scode || "", descriptors };
+        })
+        .filter(g => g.descriptors?.length > 0);
+      setFaceRegGuards(guards);
+    } catch {
+      setFaceRegGuards([]); // proceed without duplicate check if fetch fails
+    }
+    setShowFaceReg(true);
   };
 
   const onSave = async () => {
@@ -424,7 +497,8 @@ export default function Securities() {
       {showFaceReg && (
         <FaceRegistrationModal
           onDone={handleFaceRegDone}
-          onCancel={() => setShowFaceReg(false)}
+          onCancel={() => { setShowFaceReg(false); setFaceRegGuards([]); }}
+          existingGuards={faceRegGuards}
         />
       )}
 
@@ -521,20 +595,20 @@ export default function Securities() {
                       <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#22c55e",fontWeight:700}}>
                         <UserCheck size={16}/> {form.faceDescriptors.length} angles registered ✓
                       </div>
-                      <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-register</button>
+                      <button className="btn btn-ghost btn-sm" onClick={openFaceReg}>Re-register</button>
                     </div>
                   ) : (
                     <div>
                       <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#f59e0b",fontWeight:700,marginBottom:8}}>
                         <UserCheck size={16}/> {form.faceDescriptors.length} angles captured — click Save to store
                       </div>
-                      <button className="btn btn-ghost btn-sm" onClick={()=>setShowFaceReg(true)}>Re-capture</button>
+                      <button className="btn btn-ghost btn-sm" onClick={openFaceReg}>Re-capture</button>
                     </div>
                   )
                 ) : (
                   <div>
                     <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Capture 5 face angles for identity verification during patrol. No photo needed.</div>
-                    <button className="btn btn-primary btn-sm" onClick={()=>setShowFaceReg(true)}>
+                    <button className="btn btn-primary btn-sm" onClick={openFaceReg}>
                       <Camera size={13}/> Register Face (5 angles)
                     </button>
                   </div>
