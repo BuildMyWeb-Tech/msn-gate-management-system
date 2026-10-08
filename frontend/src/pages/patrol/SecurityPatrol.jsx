@@ -12,9 +12,7 @@ import { Shield, Camera, MapPin, RefreshCw, ChevronLeft, Loader, Eye, UserCheck,
 // Load face-api models once (lazy, on first need)
 let faceModelsLoaded = false;
 
-// Face verification is required only the first time "New" is clicked per page session.
-// Persists across component remounts (navigating away and back) but resets on page reload.
-let faceVerifiedThisSession = false;
+// Face verification is required every time a new patrol session is started.
 async function loadFaceModels() {
   if (faceModelsLoaded) return;
   const base = "/models";
@@ -725,11 +723,10 @@ export default function SecurityPatrol() {
   useEffect(() => { if (!activeSession) load(); }, [load, activeSession]);
 
   const handleNew = async () => {
-    // Face was already verified earlier this session — skip camera, create session directly
-    if (faceVerifiedThisSession) {
-      await handleFaceVerified();
-      return;
-    }
+    // Validate required session data before opening camera
+    if (!user?.gateId)   return setToast({ type: "error", msg: "No gate assigned — please log out and select a gate." });
+    if (!user?.gateName) return setToast({ type: "error", msg: "Gate name missing — please log out and log in again." });
+    if (!user?.userName) return setToast({ type: "error", msg: "Security name missing — please log out and log in again." });
 
     setCreating(true);
     try {
@@ -783,7 +780,6 @@ export default function SecurityPatrol() {
   };
 
   const handleFaceVerified = async () => {
-    faceVerifiedThisSession = true; // mark so subsequent "New" clicks skip camera
     setPendingRef(null);
     try {
       const res = await createPatrolSession(user?.gateName || "", user?.userName || "");

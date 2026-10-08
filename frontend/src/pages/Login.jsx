@@ -82,6 +82,12 @@ export default function Login() {
       }
 
       if (res.success) {
+        // SP bug workaround: SP may return success=true but userId=0 for bad credentials
+        if (!res.data?.userId) {
+          setError("Invalid credentials — check your Security ID and password.");
+          return;
+        }
+
         // For mobile admin — override loginType to "mobile" so mobile layout applies
         // but keep desktop menus (fetched via MenuContext using userId)
         if (isMobile && mobileRole === "admin") {
