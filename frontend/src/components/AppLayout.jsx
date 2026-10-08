@@ -79,10 +79,13 @@ export default function AppLayout() {
   const buildNav = () => {
     const nav = [{ path:"/dashboard", label:"Dashboard", Icon:LayoutDashboard }];
 
-    if (isMobileUser && user?.mobileMenus?.length) {
-      // Mobile: from PR_GetApp_UserMenus
-      user.mobileMenus.forEach(m => {
-        const key   = (m.menuname||"").toLowerCase();
+    if (isMobileUser) {
+      // Mobile: from PR_GetApp_UserMenus — fall back to defaults if SP returned nothing
+      const mobileSrc = user?.mobileMenus?.length
+        ? user.mobileMenus
+        : [{ menuname: "Visitors" }, { menuname: "Vehicles" }, { menuname: "Security Patrol" }];
+      mobileSrc.forEach(m => {
+        const key   = (m.menuname||"").toLowerCase().trim();
         const path  = MOBILE_MENU_ROUTES[key];
         if (path && !nav.find(n => n.path === path)) {
           const Icon = ICON_MAP[path] || DEFAULT_ICON;

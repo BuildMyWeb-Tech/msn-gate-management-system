@@ -34,18 +34,30 @@ async function loginSecurity({ username, password, companyCode, gateId, gateName
     throw Object.assign(new Error(msg), { status:401 });
   }
 
-  const userId    = Number(row.Userid ?? row.userid ?? 0);
+  const userId    = Number(row.Userid ?? row.userid ?? row.UserId ?? 0);
   const companyId = Number(row.companyid ?? row.Companyid ?? 1);
   // Get security guard's name from SP
   const sname     = row.Sname ?? row.sname ?? row.SName ?? null;
+
+  // If SP returned success code but no real user (bad credentials), reject
+  if (!userId) {
+    const msg = rows[0]?.ResponseMessage || "Invalid credentials";
+    console.log("[loginSecurity] SP returned success but userId=0 for:", username);
+    throw Object.assign(new Error(msg || "Invalid credentials"), { status: 401 });
+  }
 
   console.log("[loginSecurity] Success:", username, "userId:", userId, "Sname:", sname);
 
   // Get mobile menus
   const menuRows = await repo.getAppUserMenus(userId);
+  // Handle various column name casings from SP
   const menus = menuRows
-    .filter(r => r.ResponseCode === 100 || r.ResponseCode === 101 || r.menuname)
-    .map(r => ({ menumuid: r.menumuid, menuname: r.menuname }));
+    .filter(r => r.menuname ?? r.Menuname ?? r.MenuName ?? r.MENUNAME)
+    .map(r => ({
+      menumuid: r.menumuid ?? r.Menumuid ?? r.MenuMuid ?? r.MENUMUID ?? 0,
+      menuname: r.menuname ?? r.Menuname ?? r.MenuName ?? r.MENUNAME ?? "",
+    }))
+    .filter(r => r.menuname);
 
   const token = jwt.sign(
     { userId, companyId, gateId: Number(gateId)||0, loginType:"mobile" },
