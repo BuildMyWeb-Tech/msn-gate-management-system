@@ -3,7 +3,7 @@ import * as faceapi from "face-api.js";
 import { uploadSecurityPhoto } from "../../services/photoService";
 import Toast from "../../components/Toast";
 import api from "../../services/api";
-import { Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield, Upload, UserCheck } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save, Camera, Eye, RefreshCw, Shield, Upload, UserCheck, FlipHorizontal2 } from "lucide-react";
 
 // ── Face model loader (module-level, loads once) ───────────────
 let faceModelsLoaded = false;
@@ -108,6 +108,7 @@ function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
   const [initError, setInitError]     = useState(null);
   const [retryKey, setRetryKey]       = useState(0);
   const [duplicateGuard, setDuplicateGuard] = useState(null); // {sname, scode} if duplicate found
+  const [facingMode, setFacingMode]   = useState("user"); // "user"=front, "environment"=back
   const videoRef    = useRef(null);
   const detectRef   = useRef(null);
 
@@ -121,7 +122,7 @@ function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
       setModelsReady(true);
       try {
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width:{ideal:640}, height:{ideal:480} },
+          video: { facingMode, width:{ideal:640}, height:{ideal:480} },
           audio: false,
         });
         if (!cancelled) setStream(s);
@@ -131,7 +132,14 @@ function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [retryKey]); // eslint-disable-line
+  }, [retryKey, facingMode]); // eslint-disable-line
+
+  const switchCamera = () => {
+    if (detectRef.current) { clearInterval(detectRef.current); detectRef.current = null; }
+    stream?.getTracks().forEach(t => t.stop());
+    setStream(null); setFaceDetected(false);
+    setFacingMode(m => m === "user" ? "environment" : "user");
+  };
 
   useEffect(() => {
     if (stream && videoRef.current) {
@@ -200,6 +208,7 @@ function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
     stream?.getTracks().forEach(t => t.stop());
     setStream(null); setFaceDetected(false); setCapturing(false);
     setInitError(null); setCaptured([]); setStepIdx(0); setDuplicateGuard(null);
+    setFacingMode("user");
     setRetryKey(k => k+1);
   };
 
@@ -264,6 +273,15 @@ function FaceRegistrationModal({ onDone, onCancel, existingGuards = [] }) {
             <div style={{ position:"relative", background:"#000", aspectRatio:"4/3" }}>
               <video ref={videoRef} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} playsInline muted autoPlay/>
               <div style={{ position:"absolute", left:"12%", right:"12%", top:"6%", bottom:"6%", borderRadius:"50%", border:`3px solid ${ringColor}`, transition:"border-color 0.25s, box-shadow 0.25s", boxShadow:ringGlow, pointerEvents:"none" }}/>
+              {/* Camera switch button */}
+              <button onClick={switchCamera} title={facingMode === "user" ? "Switch to back camera" : "Switch to front camera"}
+                style={{ position:"absolute", top:8, right:8, width:34, height:34, borderRadius:"50%", background:"rgba(0,0,0,0.55)", border:"1px solid rgba(255,255,255,0.25)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", zIndex:2 }}>
+                <FlipHorizontal2 size={16}/>
+              </button>
+              {/* Camera label */}
+              <div style={{ position:"absolute", top:8, left:8, fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.7)", background:"rgba(0,0,0,0.45)", borderRadius:4, padding:"2px 6px" }}>
+                {facingMode === "user" ? "Front" : "Back"}
+              </div>
               <div style={{ position:"absolute", bottom:8, left:0, right:0, textAlign:"center", fontSize:12, fontWeight:700, color: faceDetected ? "#22c55e" : "#94a3b8" }}>
                 {!modelsReady ? "Loading face AI…" : faceDetected ? "Face detected — tap Capture" : "Position your face in the oval"}
               </div>
