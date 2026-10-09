@@ -178,6 +178,7 @@ router.post("/sessions/:uid/checkpoint", gmsProtect, async (req, res, next) => {
     const data = await svc.logCheckpoint({
       companyId:   getCompanyId(req),
       userId:      getUserId(req),
+      gateId:      getGateId(req),
       patrolMUid:  Number(req.params.uid),
       locationUid,
       locationName,

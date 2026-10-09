@@ -322,16 +322,12 @@ export default function Securities() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [secRes, faceRes] = await Promise.all([
-        api.get("/setup/securities"),
-        api.get("/setup/securities/facedata?uid=0"),
-      ]);
-      const raw      = secRes.data?.data  || [];
-      const faceRows = faceRes.data?.data || [];
-      const faceUids = new Set(faceRows.map(f => Number(f.Uid ?? f.uid ?? 0)).filter(Boolean));
+      const secRes = await api.get("/setup/securities");
+      const raw    = secRes.data?.data || [];
       setRows(raw.map(r => {
-        const n = normalise(r);
-        return { ...n, hasFace: faceUids.has(n.uid) };
+        const n        = normalise(r);
+        const faceStr  = (r.facedata ?? r.FaceData ?? r.Facedata ?? r.FACEDATA ?? "").toString().toLowerCase().trim();
+        return { ...n, hasFace: faceStr === "registered" };
       }));
     } catch(e) {
       console.error("[Securities load]", e);

@@ -692,7 +692,7 @@ function PatrolSession({ session, onBack, setToast }) {
 
 // ─── Patrol List Screen (Screen 1) ───────────────────────────────────────────
 export default function SecurityPatrol() {
-  const { user } = useAuth();
+  const { user, isMobileUser } = useAuth();
   const [date, setDate]           = useState(today());
   const [sessions, setSessions]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -700,15 +700,28 @@ export default function SecurityPatrol() {
   const [toast, setToast]         = useState(null);
   const [activeSession, setActiveSession] = useState(null);
   const [pendingRef, setPendingRef] = useState(null); // registered face descriptor waiting for live verify
+  // Desktop-only: gate selector
+  const [gateList, setGateList]   = useState([]);
+  const [selectedGateId, setSelectedGateId] = useState(0);
 
   // SP_App_Get_PatrolM_FrontGrid does not return today's sessions.
   // We track locally-created sessions and merge them with SP data so they stay visible.
   const localSessionsRef = useRef([]); // { ...sessionData, _date: "YYYY-MM-DD", endTime? }
 
+  // Desktop: load gate list once
+  useEffect(() => {
+    if (isMobileUser) return;
+    api.get("/auth/gates?companyCode=514670")
+      .then(r => setGateList(r.data?.data || []))
+      .catch(() => {});
+  }, [isMobileUser]);
+
+  const effectiveGateId = isMobileUser ? (user?.gateId || 0) : selectedGateId;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getPatrolSessions(date, user?.gateId || 0);
+      const res = await getPatrolSessions(date, effectiveGateId);
       const spData = res.data || [];
       const spUids = new Set(spData.map(s => String(s.uid)));
       const localOnly = localSessionsRef.current.filter(s =>
@@ -718,7 +731,7 @@ export default function SecurityPatrol() {
     } catch {
       setToast({ type: "error", msg: "Failed to load patrol sessions" });
     } finally { setLoading(false); }
-  }, [date, user?.gateId]);
+  }, [date, effectiveGateId]); // eslint-disable-line
 
   useEffect(() => { if (!activeSession) load(); }, [load, activeSession]);
 
@@ -868,12 +881,29 @@ export default function SecurityPatrol() {
               style={{ fontSize: 13 }}
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text2)", minWidth: 68 }}>Gate Name</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-              {user?.gateName || "—"}
-            </span>
-          </div>
+          {/* Desktop: gate selector combo | Mobile: show static gate name */}
+          {!isMobileUser ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--text2)", minWidth: 40 }}>Gate</span>
+              <select
+                value={selectedGateId}
+                onChange={e => setSelectedGateId(Number(e.target.value))}
+                className="form-input"
+                style={{ fontSize: 13, minWidth: 160, padding: "5px 8px" }}>
+                <option value={0}>— All Gates —</option>
+                {gateList.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--text2)", minWidth: 68 }}>Gate Name</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                {user?.gateName || "—"}
+              </span>
+            </div>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={load} style={{ marginLeft: "auto" }}>
             <RefreshCw size={13} /> Refresh
           </button>

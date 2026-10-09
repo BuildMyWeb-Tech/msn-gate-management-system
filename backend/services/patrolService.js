@@ -89,7 +89,7 @@ async function createPatrolSession({ companyId, userId, gateUid, securityUid, ga
 }
 
 // ── Log checkpoint — uploads selfie then logs via SP_APP_IUD_PatrolM ──────────
-async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locationName, selfieImage }) {
+async function logCheckpoint({ companyId, userId, gateId, patrolMUid, locationUid, locationName, selfieImage }) {
   let selfieUrl = "";
 
   if (selfieImage) {
@@ -103,14 +103,13 @@ async function logCheckpoint({ companyId, userId, patrolMUid, locationUid, locat
 
   const now = new Date();
   const row = await repo.iudPatrolM({
-    uid:          patrolMUid,
-    dt:           now,
-    gateid:       0,
-    securityid:   userId,
-    companyId:    companyId || 1,
-    userid:       userId,
-    patrolId:       patrolMUid,
-    active:         1,
+    uid:           patrolMUid,
+    dt:            now,
+    gateid:        gateId || 0,
+    securityid:    userId,
+    companyId:     companyId || 1,
+    patrolId:      0,
+    active:        1,
     patrolPointUid: locationUid || 0,
   });
 

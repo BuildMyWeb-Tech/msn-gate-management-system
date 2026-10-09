@@ -55,21 +55,27 @@ async function getPatrolSessionLogs({ uid }) {
   };
 }
 
+// Convert a UTC Date to IST (UTC+5:30) for storage in SQL Server
+function toIST(d) {
+  return new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+}
+
 // SP: SP_APP_IUD_PatrolM — 9 params confirmed via error discovery
 // @Uid, @Dt, @Gateid, @Securityid, @Companyid, @Userid, @PatrolId, @Active, @Patrolpointuid
 async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, active, patrolPointUid }) {
   const pool = await poolPromise;
+  const istDt = toIST(new Date(dt));
   const result = await pool
     .request()
     .input("uid",            sql.BigInt,   uid            || 0)
-    .input("Dt",             sql.Date,     new Date(dt))
+    .input("Dt",             sql.Date,     istDt)
     .input("PatrolId",       sql.Int,      patrolId       || 0)
     .input("Gateid",         sql.Int,      gateid         || 0)
     .input("securityid",     sql.Int,      securityid     || 0)
     .input("Active",         sql.Int,      active         ?? 1)
     .input("Companyid",      sql.Int,      companyId      || 1)
     .input("Patrolpointuid", sql.Int,      patrolPointUid || 0)
-    .input("PunchTime",      sql.DateTime, new Date(dt))
+    .input("PunchTime",      sql.DateTime, istDt)
     .execute("SP_APP_IUD_PatrolM");
   return result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
 }
