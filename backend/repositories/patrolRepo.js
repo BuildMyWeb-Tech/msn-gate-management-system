@@ -62,7 +62,7 @@ function toIST(d) {
 
 // SP: SP_APP_IUD_PatrolM — 9 params confirmed via error discovery
 // @Uid, @Dt, @Gateid, @Securityid, @Companyid, @Userid, @PatrolId, @Active, @Patrolpointuid
-async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, active, patrolPointUid }) {
+async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, active, patrolPointUid, patrolPlanUid }) {
   const pool = await poolPromise;
   const istDt = toIST(new Date(dt));
   const result = await pool
@@ -75,6 +75,7 @@ async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, ac
     .input("Active",         sql.Int,      active         ?? 1)
     .input("Companyid",      sql.Int,      companyId      || 1)
     .input("Patrolpointuid", sql.Int,      patrolPointUid || 0)
+    .input("PatrolPlanUid",  sql.BigInt,   patrolPlanUid  || 0)
     .input("PunchTime",      sql.DateTime, istDt)
     .execute("SP_APP_IUD_PatrolM");
   return result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;

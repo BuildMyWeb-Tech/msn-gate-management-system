@@ -380,7 +380,7 @@ function FaceCaptureModal({ referenceDescriptors, onVerified, onCancel }) {
 // ─── Validate Patrol Point Modal ─────────────────────────────────────────────
 // Flow: GPS locate → show found point → guard taps Confirm → checkpoint logged
 // No selfie, no camera, no face check — face was verified once at patrol start.
-function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
+function ValidateModal({ session, patrolPlanUid, onClose, onSuccess, onGpsRead, setToast }) {
   const [step, setStep]               = useState("locating"); // locating | found | verifying
   const [foundPoint, setFoundPoint]   = useState(null);
   const [gpsProgress, setGpsProgress] = useState(0);
@@ -438,8 +438,9 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
     setStep("verifying");
     try {
       const res = await logSessionCheckpoint(session.uid, {
-        locationUid:  foundPoint.uid,
-        locationName: foundPoint.name,
+        locationUid:    foundPoint.uid,
+        locationName:   foundPoint.name,
+        patrolPlanUid:  patrolPlanUid || 0,
       });
       if (res.success) {
         onSuccess({ ...res.data, _gps: capturedCoords });
@@ -588,6 +589,7 @@ function PatrolSession({ session, onBack, setToast }) {
       {showValidate && (
         <ValidateModal
           session={session}
+          patrolPlanUid={selectedPlanUid}
           onClose={() => setShowValidate(false)}
           onSuccess={handleCheckpointSuccess}
           onGpsRead={coords => setLastGps(coords)}
