@@ -10,6 +10,9 @@ function normaliseGrid(r) {
     planName:     r.PlanName ?? r.planname ?? r.planName ?? "",
     patrolPoints: Number(r.PatrolPoints ?? r.patrolpoints ?? 0),
     duration:     r.Duration ?? r.duration ?? "—",
+    gate:         r.Gate ?? r.gate ?? r.GateName ?? r.gatename ?? "",
+    startBy:      Number(r.Startby ?? r.startby ?? r.StartBy ?? 0),
+    gateUid:      Number(r.GateUid ?? r.gateuid ?? r.Gateuid ?? 0),
   };
 }
 
@@ -142,6 +145,9 @@ function DetailRow({ row, index, points, onSave, onDelete, isNew }) {
 // ── Plan Form (Add/Edit) ─────────────────────────────────────
 function PlanForm({ plan, onClose, onSaved }) {
   const [planName, setPlanName]   = useState(plan?.planName || "");
+  const [gateUid, setGateUid]     = useState(plan?.gateUid || 0);
+  const [startBy, setStartBy]     = useState(plan?.startBy || "");
+  const [gateList, setGateList]   = useState([]);
   const [details, setDetails]     = useState([]);
   const [points, setPoints]       = useState([]);
   const [planUid, setPlanUid]     = useState(plan?.uid || null);
@@ -150,10 +156,13 @@ function PlanForm({ plan, onClose, onSaved }) {
   const [toast, setToast]         = useState(null);
   const [nameError, setNameError] = useState("");
 
-  // Load patrol points combo
+  // Load patrol points combo + gate list
   useEffect(() => {
     api.get("/patrol/points-combo")
       .then(r => setPoints((r.data?.data||[]).map(normalisePoint)))
+      .catch(() => {});
+    api.get("/auth/gates?companyCode=514670")
+      .then(r => setGateList(r.data?.data || []))
       .catch(() => {});
   }, []);
 
@@ -172,10 +181,10 @@ function PlanForm({ plan, onClose, onSaved }) {
     setSaving(true);
     try {
       if (planUid) {
-        await api.put(`/patrol/plans/${planUid}`, { planName });
+        await api.put(`/patrol/plans/${planUid}`, { planName, gateUid: Number(gateUid)||0, startBy: Number(startBy)||0 });
         return true;
       } else {
-        const r = await api.post("/patrol/plans", { planName });
+        const r = await api.post("/patrol/plans", { planName, gateUid: Number(gateUid)||0, startBy: Number(startBy)||0 });
         if (!r.data?.success) { setToast({type:"error",msg:r.data?.message||"Failed"}); return false; }
         // SP returns "Uid" (capital U) in recordset
         const newUid = r.data?.uid
@@ -284,8 +293,28 @@ function PlanForm({ plan, onClose, onSaved }) {
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text2)"}}><X size={18}/></button>
         </div>
 
-        {/* Plan Name row */}
+        {/* Plan header fields */}
         <div style={{padding:"16px 24px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          {/* Row 1: Gate + Plan Starts every */}
+          <div style={{display:"flex",gap:16,marginBottom:12,flexWrap:"wrap"}}>
+            <div className="form-group" style={{flex:1,minWidth:180,marginBottom:0}}>
+              <label className="form-label">Gate</label>
+              <select className="form-input" value={gateUid} onChange={e=>setGateUid(Number(e.target.value))}>
+                <option value={0}>— Select Gate —</option>
+                {gateList.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{width:200,marginBottom:0}}>
+              <label className="form-label">Plan Starts every</label>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" className="form-input" min={0}
+                  value={startBy} onChange={e=>setStartBy(e.target.value)}
+                  placeholder="0" style={{width:100}}/>
+                <span style={{fontSize:13,color:"var(--text2)",whiteSpace:"nowrap"}}>Minutes</span>
+              </div>
+            </div>
+          </div>
+          {/* Row 2: Plan Name + Save */}
           <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
             <div className="form-group" style={{flex:1,marginBottom:0}}>
               <label className="form-label">Plan Name <span className="req">*</span></label>
@@ -420,6 +449,8 @@ export default function PatrolPlan() {
             <thead><tr>
               <th style={{width:60}}>Sl No</th>
               <th>Patrol Plan Name</th>
+              <th style={{width:140}}>Gate</th>
+              <th style={{width:110}}>Start By (min)</th>
               <th style={{width:120}}>Patrol Points</th>
               <th style={{width:120}}>Duration</th>
               <th style={{width:120}}>Actions</th>
@@ -431,6 +462,8 @@ export default function PatrolPlan() {
                   onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <td className="td-muted" style={{textAlign:"center"}}>{i+1}</td>
                   <td style={{fontWeight:600}}>{row.planName||"—"}</td>
+                  <td>{row.gate||"—"}</td>
+                  <td style={{textAlign:"center"}}>{row.startBy||"—"}</td>
                   <td style={{textAlign:"center"}}>{row.patrolPoints||0}</td>
                   <td>{row.duration||"—"}</td>
                   <td>

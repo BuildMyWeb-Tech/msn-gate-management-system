@@ -517,6 +517,8 @@ function PatrolSession({ session, onBack, setToast }) {
   const [showValidate, setShowValidate] = useState(false);
   const [ending, setEnding]           = useState(false);
   const [lastGps, setLastGps]         = useState(null); // { lat, lng } — temp debug display
+  const [planList, setPlanList]       = useState([]);
+  const [selectedPlanUid, setSelectedPlanUid] = useState(0);
 
   const loadCheckpoints = useCallback(async () => {
     setLoading(true);
@@ -528,6 +530,27 @@ function PatrolSession({ session, onBack, setToast }) {
   }, [session.uid]); // eslint-disable-line
 
   useEffect(() => { loadCheckpoints(); }, [loadCheckpoints]);
+
+  // Load patrol plans for this gate to fill the plan combo
+  useEffect(() => {
+    api.get("/patrol/plans")
+      .then(r => {
+        const all = r.data?.data || [];
+        // Filter by gateId if possible (SP returns GateUid column); fall back to show all
+        const gateId = session.gateId || 0;
+        const filtered = gateId
+          ? all.filter(p => {
+              const pGate = Number(p.GateUid ?? p.gateuid ?? p.Gateuid ?? 0);
+              return pGate === 0 || pGate === gateId;
+            })
+          : all;
+        setPlanList(filtered.map(p => ({
+          uid:  Number(p.uid ?? p.Uid ?? p.PlanMUid ?? 0),
+          name: p.PlanName ?? p.planname ?? p.planName ?? "",
+        })));
+      })
+      .catch(() => {});
+  }, [session.gateId]);
 
   const handleCheckpointSuccess = (newRow) => {
     setShowValidate(false);
@@ -594,24 +617,47 @@ function PatrolSession({ session, onBack, setToast }) {
             <span style={{ color: "var(--text3)", fontSize: 13 }}>:</span>
             <span style={S.infoVal}>{session.securityName || "—"}</span>
           </div>
-          <div style={S.infoRow}>
-            <span style={S.infoLabel}>Patrol ID</span>
-            <span style={{ color: "var(--text3)", fontSize: 13 }}>:</span>
-            <span style={S.infoVal}>{session.patrolId || "—"}</span>
+          <div style={{ ...S.infoRow, alignItems: "flex-start", paddingTop: 12 }}>
+            <span style={{ ...S.infoLabel, paddingTop: 6 }}>Patrol Plan <span style={{ color: "var(--red)", fontSize: 11 }}>*</span></span>
+            <span style={{ color: "var(--text3)", fontSize: 13, paddingTop: 6 }}>:</span>
+            <div style={{ flex: 1 }}>
+              <select
+                value={selectedPlanUid}
+                onChange={e => setSelectedPlanUid(Number(e.target.value))}
+                className="form-input"
+                style={{ fontSize: 13, padding: "5px 8px", width: "100%" }}>
+                <option value={0}>— Select Patrol Plan —</option>
+                {planList.map(p => (
+                  <option key={p.uid} value={p.uid}>{p.name}</option>
+                ))}
+              </select>
+              {!selectedPlanUid && (
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>
+                  Select a plan before validating patrol points
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Validate button */}
+        {/* Validate button — disabled until a plan is selected */}
         {!session.endTime && (
           <div style={{ padding: "14px 16px 0" }}>
             <button
-              onClick={() => setShowValidate(true)}
+              onClick={() => {
+                if (!selectedPlanUid) return setToast({ type: "error", msg: "Please select a Patrol Plan before validating." });
+                setShowValidate(true);
+              }}
+              disabled={!selectedPlanUid}
               style={{
                 width: "100%", padding: "12px",
-                background: "var(--accent)", color: "#000",
+                background: selectedPlanUid ? "var(--accent)" : "var(--border)",
+                color: selectedPlanUid ? "#000" : "var(--text2)",
                 border: "none", borderRadius: "var(--radius-sm)",
-                fontSize: 13, fontWeight: 700, cursor: "pointer",
+                fontSize: 13, fontWeight: 700,
+                cursor: selectedPlanUid ? "pointer" : "not-allowed",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "background 0.2s",
               }}>
               <MapPin size={15} /> Validate Patrol Point
             </button>
@@ -797,7 +843,7 @@ export default function SecurityPatrol() {
     try {
       const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
       if (res.success) {
-        const tracked = { ...res.data, _date: date };
+        const tracked = { ...res.data, _date: date, gateId: user?.gateId || 0 };
         localSessionsRef.current = [...localSessionsRef.current, tracked];
         setActiveSession(tracked);
       } else {

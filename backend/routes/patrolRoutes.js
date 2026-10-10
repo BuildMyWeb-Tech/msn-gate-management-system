@@ -42,10 +42,12 @@ router.get("/plans/:uid/list", gmsProtect, async (req, res, next) => {
 // POST /api/patrol/plans
 router.post("/plans", gmsProtect, async (req, res, next) => {
   try {
-    const { planName } = req.body;
+    const { planName, gateUid, startBy } = req.body;
     if (!planName?.trim()) return res.status(400).json({ success:false, message:"Plan name required" });
     const row = await planRepo.iudPatrolPlan({
       mode:1, userId:getUserId(req), planName, uid:0, companyId:getCompanyId(req),
+      gateUid: Number(gateUid) || 0,
+      startBy: Number(startBy) || 0,
     });
     const rc = row?.ResponseCode ?? 100;
     if (rc > 101) return res.status(400).json({ success:false, message:row?.ResponseMessage||"Failed" });
@@ -57,9 +59,11 @@ router.post("/plans", gmsProtect, async (req, res, next) => {
 // PUT /api/patrol/plans/:uid
 router.put("/plans/:uid", gmsProtect, async (req, res, next) => {
   try {
-    const { planName } = req.body;
+    const { planName, gateUid, startBy } = req.body;
     const row = await planRepo.iudPatrolPlan({
       mode:2, userId:getUserId(req), planName, uid:Number(req.params.uid), companyId:getCompanyId(req),
+      gateUid: Number(gateUid) || 0,
+      startBy: Number(startBy) || 0,
     });
     const rc = row?.ResponseCode ?? 100;
     if (rc > 101) return res.status(400).json({ success:false, message:row?.ResponseMessage||"Failed" });

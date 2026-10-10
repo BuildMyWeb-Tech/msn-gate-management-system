@@ -31,7 +31,8 @@ async function getPatrolPlanList({ companyId, uid }) {
 
 // Insert/Update/Delete plan header — PR_IUD_PatrolPlan
 // @Mode: 1=Add, 2=Edit, 3=Delete
-async function iudPatrolPlan({ mode, userId, planName, uid, companyId }) {
+// @GateUid bigint, @Startby int added by DB team 2026-10-10
+async function iudPatrolPlan({ mode, userId, planName, uid, companyId, gateUid, startBy }) {
   const pool = await poolPromise;
   const result = await pool.request()
     .input("Mode",      sql.Int,           mode)
@@ -39,6 +40,8 @@ async function iudPatrolPlan({ mode, userId, planName, uid, companyId }) {
     .input("PlanName",  sql.NVarChar(100), planName || "")
     .input("Uid",       sql.Int,           uid || 0)
     .input("companyid", sql.Int,           companyId)
+    .input("GateUid",   sql.BigInt,        gateUid  || 0)
+    .input("Startby",   sql.Int,           startBy  || 0)
     .execute("PR_IUD_PatrolPlan");
   const row = result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
   return row;
