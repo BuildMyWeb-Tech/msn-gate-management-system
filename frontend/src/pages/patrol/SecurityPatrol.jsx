@@ -380,7 +380,7 @@ function FaceCaptureModal({ referenceDescriptors, onVerified, onCancel }) {
 // ─── Validate Patrol Point Modal ─────────────────────────────────────────────
 // Flow: GPS locate → show found point → guard taps Confirm → checkpoint logged
 // No selfie, no camera, no face check — face was verified once at patrol start.
-function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
+function ValidateModal({ session, patrolMUid, onClose, onSuccess, onGpsRead, setToast }) {
   const [step, setStep]               = useState("locating"); // locating | found | verifying
   const [foundPoint, setFoundPoint]   = useState(null);
   const [gpsProgress, setGpsProgress] = useState(0);
@@ -437,7 +437,7 @@ function ValidateModal({ session, onClose, onSuccess, onGpsRead, setToast }) {
   const submitCheckpoint = async () => {
     setStep("verifying");
     try {
-      const res = await logSessionCheckpoint(session.uid, {
+      const res = await logSessionCheckpoint(patrolMUid || 0, {
         locationUid:  foundPoint.uid,
         locationName: foundPoint.name,
       });
@@ -519,15 +519,18 @@ function PatrolSession({ session, onBack, setToast }) {
   const [lastGps, setLastGps]         = useState(null); // { lat, lng } — temp debug display
   const [planList, setPlanList]       = useState([]);
   const [selectedPlanUid, setSelectedPlanUid] = useState(0);
+  // patrolMUid starts at 0 for new sessions; set to real uid after first checkpoint
+  const [patrolMUid, setPatrolMUid]   = useState(session.uid || 0);
 
   const loadCheckpoints = useCallback(async () => {
+    if (!patrolMUid) { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await getSessionCheckpoints(session.uid);
+      const res = await getSessionCheckpoints(patrolMUid);
       setCheckpoints(res.data || []);
     } catch { setToast({ type: "error", msg: "Failed to load checkpoints" }); }
     finally { setLoading(false); }
-  }, [session.uid]); // eslint-disable-line
+  }, [patrolMUid]); // eslint-disable-line
 
   useEffect(() => { loadCheckpoints(); }, [loadCheckpoints]);
 
@@ -554,15 +557,18 @@ function PatrolSession({ session, onBack, setToast }) {
 
   const handleCheckpointSuccess = (newRow) => {
     setShowValidate(false);
+    // First checkpoint creates the PatrolM row — capture its uid
+    if (newRow?.uid && !patrolMUid) setPatrolMUid(Number(newRow.uid));
     if (newRow?._gps) setLastGps(newRow._gps);
     loadCheckpoints();
     setToast({ type: "success", msg: "Patrol point validated successfully" });
   };
 
   const handleEndPatrol = async () => {
+    if (!patrolMUid) { onBack(false); return; } // session never started in DB
     setEnding(true);
     try {
-      await endPatrolSession(session.uid);
+      await endPatrolSession(patrolMUid);
       setToast({ type: "success", msg: "Patrol ended" });
       onBack(true, session); // pass session so parent can record end time locally
     } catch (err) {
@@ -588,6 +594,7 @@ function PatrolSession({ session, onBack, setToast }) {
       {showValidate && (
         <ValidateModal
           session={session}
+          patrolMUid={patrolMUid}
           onClose={() => setShowValidate(false)}
           onSuccess={handleCheckpointSuccess}
           onGpsRead={coords => setLastGps(coords)}
@@ -838,20 +845,22 @@ export default function SecurityPatrol() {
     } finally { setCreating(false); }
   };
 
-  const handleFaceVerified = async () => {
+  const handleFaceVerified = () => {
     setPendingRef(null);
-    try {
-      const res = await createPatrolSession(user?.gateName || "", user?.userName || "");
-      if (res.success) {
-        const tracked = { ...res.data, _date: date, gateId: user?.gateId || 0 };
-        localSessionsRef.current = [...localSessionsRef.current, tracked];
-        setActiveSession(tracked);
-      } else {
-        setToast({ type: "error", msg: res.message || "Failed to create patrol session" });
-      }
-    } catch (err) {
-      setToast({ type: "error", msg: err.response?.data?.message || "Failed to create patrol" });
-    }
+    // SP_APP_IUD_PatrolM is called on first checkpoint, not on session start.
+    // Build a local session object with uid=0; uid is filled after first checkpoint.
+    const localSession = {
+      uid:          0,
+      patrolId:     null,
+      gateName:     user?.gateName     || "",
+      securityName: user?.userName     || "",
+      gateId:       user?.gateId       || 0,
+      startTime:    new Date().toISOString(),
+      endTime:      null,
+      _date:        date,
+    };
+    localSessionsRef.current = [...localSessionsRef.current, localSession];
+    setActiveSession(localSession);
   };
 
   const handleFaceCancel = () => setPendingRef(null);

@@ -117,8 +117,8 @@ async function logCheckpoint({ companyId, userId, gateId, patrolMUid, locationUi
   if (rc > 101) throw Object.assign(new Error(row?.ResponseMessage || "Failed to log checkpoint"), { status: 400 });
 
   return {
-    uid:          row?.Uid          ?? row?.uid,
-    slNo:         row?.SlNo         ?? row?.slNo,
+    uid:          row?.PatrolUid ?? row?.PatrolMUid ?? row?.Uid ?? row?.uid ?? null,
+    slNo:         row?.SlNo      ?? row?.slNo,
     locationName: row?.LocationName ?? locationName ?? "",
     visitedAt:    now.toISOString(),
     selfieUrl,
