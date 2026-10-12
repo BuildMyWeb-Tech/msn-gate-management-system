@@ -60,8 +60,8 @@ function toIST(d) {
   return new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
 }
 
-// SP: SP_APP_IUD_PatrolM — 9 params confirmed via error discovery
-// @Uid, @Dt, @Gateid, @Securityid, @Companyid, @Userid, @PatrolId, @Active, @Patrolpointuid
+// SP: PR_APP_IUD_PatrolM (renamed from SP_APP_IUD_PatrolM by DB team 2026-10-12)
+// @uid, @Dt, @PatrolId, @Gateid, @securityid, @Active, @Companyid, @Patrolpointuid, @PunchTime, @PatrolplanMuid
 async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, active, patrolPointUid, patrolPlanUid }) {
   const pool = await poolPromise;
   const istDt = toIST(new Date(dt));
@@ -75,9 +75,9 @@ async function iudPatrolM({ uid, dt, gateid, securityid, companyId, patrolId, ac
     .input("Active",         sql.Int,      active         ?? 1)
     .input("Companyid",      sql.Int,      companyId      || 1)
     .input("Patrolpointuid", sql.Int,      patrolPointUid || 0)
-    .input("PatrolPlanUid",  sql.BigInt,   patrolPlanUid  || 0)
     .input("PunchTime",      sql.DateTime, istDt)
-    .execute("SP_APP_IUD_PatrolM");
+    .input("PatrolplanMuid", sql.BigInt,   patrolPlanUid  || 0)
+    .execute("PR_APP_IUD_PatrolM");
   return result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
 }
 
