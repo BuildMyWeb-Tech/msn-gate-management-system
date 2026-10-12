@@ -380,7 +380,7 @@ function FaceCaptureModal({ referenceDescriptors, onVerified, onCancel }) {
 // ─── Validate Patrol Point Modal ─────────────────────────────────────────────
 // Flow: GPS locate → show found point → guard taps Confirm → checkpoint logged
 // No selfie, no camera, no face check — face was verified once at patrol start.
-function ValidateModal({ session, patrolMUid, patrolPlanUid, onClose, onSuccess, onGpsRead, setToast }) {
+function ValidateModal({ session, patrolMUid, patrolPlanUid, checkpoints, onClose, onSuccess, onGpsRead, setToast }) {
   const [step, setStep]               = useState("locating"); // locating | found | verifying
   const [foundPoint, setFoundPoint]   = useState(null);
   const [gpsProgress, setGpsProgress] = useState(0);
@@ -435,6 +435,13 @@ function ValidateModal({ session, patrolMUid, patrolPlanUid, onClose, onSuccess,
   }, []); // eslint-disable-line
 
   const submitCheckpoint = async () => {
+    // Duplicate check — same patrol point already logged in this session
+    if ((checkpoints || []).includes(Number(foundPoint.uid))) {
+      setToast({ type: "error", msg: `"${foundPoint.name}" already validated in this patrol session.` });
+      onClose();
+      return;
+    }
+
     setStep("verifying");
     try {
       const res = await logSessionCheckpoint(patrolMUid || 0, {
@@ -443,7 +450,7 @@ function ValidateModal({ session, patrolMUid, patrolPlanUid, onClose, onSuccess,
         patrolPlanUid: patrolPlanUid || 0,
       });
       if (res.success) {
-        onSuccess({ ...res.data, _gps: capturedCoords });
+        onSuccess({ ...res.data, _gps: capturedCoords, _pointUid: foundPoint.uid });
       } else {
         setToast({ type: "error", msg: res.message || "Checkpoint log failed" });
         onClose();
@@ -522,6 +529,8 @@ function PatrolSession({ session, onBack, setToast }) {
   const [selectedPlanUid, setSelectedPlanUid] = useState(0);
   // patrolMUid starts at 0 for new sessions; set to real uid after first checkpoint
   const [patrolMUid, setPatrolMUid]   = useState(session.uid || 0);
+  // Track logged patrol point uids to prevent duplicates within this session
+  const [loggedPointUids, setLoggedPointUids] = useState([]);
 
   const loadCheckpoints = useCallback(async () => {
     if (!patrolMUid) { setLoading(false); return; }
@@ -560,6 +569,8 @@ function PatrolSession({ session, onBack, setToast }) {
     setShowValidate(false);
     // First checkpoint creates the PatrolM row — capture its uid
     if (newRow?.uid && !patrolMUid) setPatrolMUid(Number(newRow.uid));
+    // Track this patrol point uid to block duplicate logging
+    if (newRow?._pointUid) setLoggedPointUids(prev => [...prev, Number(newRow._pointUid)]);
     if (newRow?._gps) setLastGps(newRow._gps);
     loadCheckpoints();
     setToast({ type: "success", msg: "Patrol point validated successfully" });
@@ -597,6 +608,7 @@ function PatrolSession({ session, onBack, setToast }) {
           session={session}
           patrolMUid={patrolMUid}
           patrolPlanUid={selectedPlanUid}
+          checkpoints={loggedPointUids}
           onClose={() => setShowValidate(false)}
           onSuccess={handleCheckpointSuccess}
           onGpsRead={coords => setLastGps(coords)}
