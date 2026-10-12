@@ -89,7 +89,7 @@ async function createPatrolSession({ companyId, userId, gateUid, securityUid, ga
 }
 
 // ── Log checkpoint — uploads selfie then logs via SP_APP_IUD_PatrolM ──────────
-async function logCheckpoint({ companyId, userId, gateId, patrolMUid, locationUid, locationName, selfieImage, patrolPlanUid }) {
+async function logCheckpoint({ companyId, userId, gateId, patrolMUid, locationUid, locationName, selfieImage }) {
   let selfieUrl = "";
 
   if (selfieImage) {
@@ -111,7 +111,6 @@ async function logCheckpoint({ companyId, userId, gateId, patrolMUid, locationUi
     patrolId:      0,
     active:        1,
     patrolPointUid: locationUid || 0,
-    patrolPlanUid:  patrolPlanUid || 0,
   });
 
   const rc = row?.ResponseCode ?? 100;
