@@ -177,16 +177,17 @@ router.get("/sessions/:uid/checkpoints", gmsProtect, async (req, res, next) => {
 // Body: { locationUid, locationName, selfieImage (base64 data URI) }
 router.post("/sessions/:uid/checkpoint", gmsProtect, async (req, res, next) => {
   try {
-    const { locationUid, locationName, selfieImage } = req.body;
+    const { locationUid, locationName, selfieImage, patrolPlanUid } = req.body;
     if (!locationUid) return res.status(400).json({ success:false, message:"locationUid is required" });
     const data = await svc.logCheckpoint({
-      companyId:   getCompanyId(req),
-      userId:      getUserId(req),
-      gateId:      getGateId(req),
-      patrolMUid:  Number(req.params.uid),
+      companyId:    getCompanyId(req),
+      userId:       getUserId(req),
+      gateId:       getGateId(req),
+      patrolMUid:   Number(req.params.uid),
       locationUid,
       locationName,
       selfieImage,
+      patrolPlanUid: Number(patrolPlanUid) || 0,
     });
     res.json({ success:true, data });
   } catch(err) { next(err); }
