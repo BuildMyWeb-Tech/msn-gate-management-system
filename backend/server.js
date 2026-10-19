@@ -19,7 +19,14 @@ const getAllowedOrigins = () => {
     "http://localhost:3000",
     "http://localhost:4173",
   ];
-  if (process.env.FRONTEND_URL) list.push(process.env.FRONTEND_URL.trim());
+  if (process.env.FRONTEND_URL) {
+    const base = process.env.FRONTEND_URL.trim();
+    list.push(base);
+    // also allow www variant
+    if (base.startsWith("https://") && !base.includes("://www.")) {
+      list.push(base.replace("https://", "https://www."));
+    }
+  }
   return list;
 };
 app.use(cors({
