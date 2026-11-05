@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
-import { loginUser, loginSecurity, getGates } from "../services/authService";
+import { loginUser, loginSecurity, getGates, getCompanyByShortname } from "../services/authService";
 import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor, Shield, UserCog } from "lucide-react";
 
 export default function Login() {
@@ -16,25 +16,43 @@ export default function Login() {
   const [form, setForm] = useState({
     username:"", password:"", companyCode:"514670", gateId:"", gateName:"",
   });
-  const [gates, setGates]         = useState([]);
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [showPw, setShowPw]       = useState(false);
+  const [gates, setGates]               = useState([]);
+  const [error, setError]               = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [showPw, setShowPw]             = useState(false);
   const [gatesLoading, setGatesLoading] = useState(false);
+  const [companyName, setCompanyName]   = useState("");
+  const [companyResolved, setCompanyResolved] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) navigate("/dashboard", { replace:true });
   }, [isAuthenticated, navigate]);
 
+  // Resolve company from ?company= URL param (e.g. gate.msninfotec.com/login?company=msn)
+  useEffect(() => {
+    const params   = new URLSearchParams(window.location.search);
+    const shortname = params.get("company");
+    if (!shortname) return;
+    getCompanyByShortname(shortname)
+      .then(r => {
+        if (r.success && r.data?.companyCode) {
+          setForm(p => ({ ...p, companyCode: r.data.companyCode }));
+          setCompanyName(r.data.companyName || shortname);
+          setCompanyResolved(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Load gates for security mobile login
   useEffect(() => {
     if (!isMobile || mobileRole !== "security") return;
     setGatesLoading(true);
-    getGates("514670")
+    getGates(form.companyCode)
       .then(r => { if (r.success && r.data?.length) setGates(r.data); })
       .catch(() => {})
       .finally(() => setGatesLoading(false));
-  }, [isMobile, mobileRole]);
+  }, [isMobile, mobileRole, form.companyCode]);
 
   const onChange = e => {
     setError("");
@@ -158,11 +176,20 @@ export default function Login() {
         )}
 
         <form onSubmit={onSubmit} noValidate>
-          <div className="form-group">
-            <label className="form-label">Company Code</label>
-            <input name="companyCode" className="form-input"
-              value={form.companyCode} onChange={onChange}/>
-          </div>
+          {companyResolved ? (
+            <div className="form-group">
+              <label className="form-label">Company</label>
+              <div className="form-input" style={{ color:"var(--text1)", background:"var(--surface2)", cursor:"default" }}>
+                {companyName}
+              </div>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label className="form-label">Company Code</label>
+              <input name="companyCode" className="form-input"
+                value={form.companyCode} onChange={onChange}/>
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">

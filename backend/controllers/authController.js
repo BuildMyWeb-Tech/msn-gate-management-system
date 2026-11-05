@@ -44,3 +44,18 @@ exports.getGates = async (req, res, next) => {
     res.json({ success:true, data:gates });
   } catch(err) { next(err); }
 };
+
+// GET /api/auth/company?shortname=msn
+exports.getCompanyByShortname = async (req, res, next) => {
+  try {
+    const { shortname } = req.query;
+    if (!shortname?.trim()) {
+      return res.status(400).json({ success:false, message:"shortname is required" });
+    }
+    const company = await service.getCompanyByShortname(shortname.trim());
+    if (!company || !company.companyCode) {
+      return res.status(404).json({ success:false, message:"Company not found" });
+    }
+    res.json({ success:true, data:company });
+  } catch(err) { next(err); }
+};

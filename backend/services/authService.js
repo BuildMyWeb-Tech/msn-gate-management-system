@@ -95,4 +95,15 @@ async function getUserMenus(userId) {
   return repo.getUserMenus(userId);
 }
 
-module.exports = { loginUser, loginSecurity, getGatesForLogin, getUserMenus };
+// ── Company lookup by shortname ───────────────────────────────
+async function getCompanyByShortname(shortname) {
+  const row = await repo.getCompanyByShortname(shortname);
+  if (!row) return null;
+  return {
+    companyCode: String(row.CompanyCode ?? row.companycode ?? row.Companycode ?? ""),
+    companyId:   Number(row.CompanyId   ?? row.companyid   ?? row.Companyid   ?? 0),
+    companyName: String(row.CompanyName ?? row.companyname ?? row.Companyname ?? shortname),
+  };
+}
+
+module.exports = { loginUser, loginSecurity, getGatesForLogin, getUserMenus, getCompanyByShortname };

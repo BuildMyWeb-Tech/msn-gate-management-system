@@ -49,10 +49,20 @@ async function getAppUserMenus(userId) {
   return result.recordset || [];
 }
 
+// Company lookup by shortname — PR_Get_CompanyByShortName
+async function getCompanyByShortname(shortname) {
+  const pool = await poolPromise;
+  const result = await pool.request()
+    .input("ShortName", sql.NVarChar(50), String(shortname))
+    .execute("PR_Get_CompanyByShortName");
+  return result.recordset?.[0] ?? null;
+}
+
 module.exports = {
   validateUserLogin,
   validateSecurityLogin,
   getGatesForLogin,
   getUserMenus,
   getAppUserMenus,
+  getCompanyByShortname,
 };
