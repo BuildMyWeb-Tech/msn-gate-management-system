@@ -49,12 +49,12 @@ async function getAppUserMenus(userId) {
   return result.recordset || [];
 }
 
-// Company lookup by shortname — PR_Get_CompanyByShortName
+// Company lookup by shortname — PRW_GetDBDetails
 async function getCompanyByShortname(shortname) {
   const pool = await poolPromise;
   const result = await pool.request()
-    .input("ShortName", sql.NVarChar(50), String(shortname))
-    .execute("PR_Get_CompanyByShortName");
+    .input("cname", sql.NVarChar(20), String(shortname))
+    .execute("PRW_GetDBDetails");
   return result.recordset?.[0] ?? null;
 }
 

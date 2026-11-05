@@ -95,15 +95,24 @@ async function getUserMenus(userId) {
   return repo.getUserMenus(userId);
 }
 
-// ── Company lookup by shortname ───────────────────────────────
+// ── Company lookup by shortname — PRW_GetDBDetails @cname ─────
 async function getCompanyByShortname(shortname) {
   const row = await repo.getCompanyByShortname(shortname);
   if (!row) return null;
-  return {
-    companyCode: String(row.CompanyCode ?? row.companycode ?? row.Companycode ?? ""),
-    companyId:   Number(row.CompanyId   ?? row.companyid   ?? row.Companyid   ?? 0),
-    companyName: String(row.CompanyName ?? row.companyname ?? row.Companyname ?? shortname),
-  };
+  const companyCode = String(
+    row.CompanyCode ?? row.companycode ?? row.Companycode ??
+    row.Ccode ?? row.ccode ?? row.CCode ?? ""
+  );
+  const companyId = Number(
+    row.CompanyId ?? row.companyid ?? row.Companyid ??
+    row.Cid ?? row.cid ?? row.CId ?? 0
+  );
+  const companyName = String(
+    row.CompanyName ?? row.companyname ?? row.Companyname ??
+    row.Cname ?? row.cname ?? row.CName ?? shortname
+  );
+  if (!companyCode) return null;
+  return { companyCode, companyId, companyName };
 }
 
 module.exports = { loginUser, loginSecurity, getGatesForLogin, getUserMenus, getCompanyByShortname };

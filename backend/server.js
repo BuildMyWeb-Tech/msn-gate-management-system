@@ -34,6 +34,8 @@ app.use(cors({
     if (!origin) return cb(null, true);
     if (getAllowedOrigins().includes(origin)) return cb(null, true);
     if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return cb(null, true);
+    // allow any subdomain of msninfotec.com
+    if (/^https?:\/\/([a-z0-9-]+\.)?msninfotec\.com$/.test(origin)) return cb(null, true);
     cb(new Error(`CORS: ${origin} not allowed`));
   },
   credentials: true,
