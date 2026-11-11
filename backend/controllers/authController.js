@@ -53,9 +53,13 @@ exports.getCompanyByShortname = async (req, res, next) => {
       return res.status(400).json({ success:false, message:"shortname is required" });
     }
     const company = await service.getCompanyByShortname(shortname.trim());
-    if (!company || !company.companyCode) {
+    console.log("[getCompany] shortname:", shortname, "| resolved:", JSON.stringify(company));
+    if (!company || !company.companyId) {
       return res.status(404).json({ success:false, message:"Company not found" });
     }
     res.json({ success:true, data:company });
-  } catch(err) { next(err); }
+  } catch(err) {
+    console.error("[getCompany] SP error:", err.message);
+    next(err);
+  }
 };

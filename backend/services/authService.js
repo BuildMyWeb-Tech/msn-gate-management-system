@@ -96,23 +96,27 @@ async function getUserMenus(userId) {
 }
 
 // ── Company lookup by shortname — PRW_GetDBDetails @cname ─────
+// SP returns: ServerName, UserName, PassCode, DBName, CustomerName, Url, UID
 async function getCompanyByShortname(shortname) {
   const row = await repo.getCompanyByShortname(shortname);
   if (!row) return null;
+  const companyId   = Number(row.UID ?? row.uid ?? 0);
+  const companyName = String(row.CustomerName ?? shortname);
+  // SP now returns CustomerCode (e.g. KRGSolor, omtex, krg) as the login companyCode
   const companyCode = String(
-    row.CompanyCode ?? row.companycode ?? row.Companycode ??
-    row.Ccode ?? row.ccode ?? row.CCode ?? ""
+    row.CustomerCode ?? row.customercode ?? row.CustomerCode ??
+    row.CompanyCode  ?? row.companycode  ?? ""
   );
-  const companyId = Number(
-    row.CompanyId ?? row.companyid ?? row.Companyid ??
-    row.Cid ?? row.cid ?? row.CId ?? 0
-  );
-  const companyName = String(
-    row.CompanyName ?? row.companyname ?? row.Companyname ??
-    row.Cname ?? row.cname ?? row.CName ?? shortname
-  );
-  if (!companyCode) return null;
-  return { companyCode, companyId, companyName };
+  if (!companyId) return null;
+  return {
+    companyCode,
+    companyId,
+    companyName,
+    dbServer: row.ServerName ?? "",
+    dbUser:   row.UserName   ?? "",
+    dbName:   row.DBName     ?? "",
+    apiUrl:   row.Url        ?? "",
+  };
 }
 
 module.exports = { loginUser, loginSecurity, getGatesForLogin, getUserMenus, getCompanyByShortname };
