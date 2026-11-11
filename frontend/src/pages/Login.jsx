@@ -2,16 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
-import { loginUser, loginSecurity, getGates, getCompanyByShortname } from "../services/authService";
+import { loginUser, loginSecurity, getGates } from "../services/authService";
 import { Eye, EyeOff, LogIn, AlertCircle, Monitor, Shield, UserCog, ChevronRight, Building2 } from "lucide-react";
 
-// Company list — shortname is the @cname value passed to PRW_GetDBDetails SP
+// Company list — companyCode is the numeric code used by PR_Validate_UserLogin / PR_AppValidate_SecurityLogin
 const COMPANIES = [
-  { label: "KRG Power Solar",  shortname: "KRGSolor" },
-  { label: "INDO TEXNOLOGY",   shortname: "Amman1"   },
-  { label: "Suriya SPinners",  shortname: "Amman2"   },
-  { label: "Om Textiles",      shortname: "omtex"    },
-  { label: "KRG SOLAR",        shortname: "krg"      },
+  { label: "KRG Power Solar",  companyCode: "5146703" },
+  { label: "INDO TEXNOLOGY",   companyCode: "5146679" },
+  { label: "Suriya SPinners",  companyCode: "5146681" },
+  { label: "Om Textiles",      companyCode: "5146635" },
+  { label: "KRG SOLAR",        companyCode: "5146672" },
 ];
 
 export default function Login() {
@@ -32,9 +32,6 @@ export default function Login() {
   const [companyName, setCompanyName]   = useState("");
   const [companyResolved, setCompanyResolved] = useState(false);
 
-  // Company search step (shown when no ?company= param in URL)
-  const [companySearch, setCompanySearch]       = useState("");
-  const [companySearching, setCompanySearching] = useState(false);
   const [companySearchError, setCompanySearchError] = useState("");
   const [showCompanySearch, setShowCompanySearch]   = useState(false);
 
@@ -45,52 +42,31 @@ export default function Login() {
   // Resolve company from ?company= URL param
   useEffect(() => {
     const params    = new URLSearchParams(window.location.search);
-    const shortname = params.get("company");
-    if (!shortname) {
-      // No company in URL — show search step
+    const param     = params.get("company");
+    if (!param) {
       setShowCompanySearch(true);
       return;
     }
-    getCompanyByShortname(shortname)
-      .then(r => {
-        if (r.success && r.data) {
-          if (r.data.companyCode) setForm(p => ({ ...p, companyCode: r.data.companyCode }));
-          setCompanyName(r.data.companyName || shortname);
-          setCompanyResolved(true);
-          setShowCompanySearch(false);
-        } else {
-          setShowCompanySearch(true);
-        }
-      })
-      .catch(() => setShowCompanySearch(true));
-  }, []);
-
-  const handleSelectCompany = async (company) => {
-    setCompanySearching(true);
-    setCompanySearchError("");
-    setCompanySearch(company.label);
-    try {
-      const r = await getCompanyByShortname(company.shortname);
-      if (r.success && r.data) {
-        if (r.data.companyCode) setForm(p => ({ ...p, companyCode: r.data.companyCode }));
-        setCompanyName(r.data.companyName || company.label);
-        setCompanyResolved(true);
-        setShowCompanySearch(false);
-      } else {
-        // Fallback: use known shortname as companyCode directly
-        setForm(p => ({ ...p, companyCode: company.shortname }));
-        setCompanyName(company.label);
-        setCompanyResolved(true);
-        setShowCompanySearch(false);
-      }
-    } catch {
-      setForm(p => ({ ...p, companyCode: company.shortname }));
-      setCompanyName(company.label);
+    // Match param against known companies (case-insensitive label or companyCode)
+    const match = COMPANIES.find(c =>
+      c.label.toLowerCase() === param.toLowerCase() ||
+      c.companyCode === param
+    );
+    if (match) {
+      setForm(p => ({ ...p, companyCode: match.companyCode }));
+      setCompanyName(match.label);
       setCompanyResolved(true);
       setShowCompanySearch(false);
-    } finally {
-      setCompanySearching(false);
+    } else {
+      setShowCompanySearch(true);
     }
+  }, []);
+
+  const handleSelectCompany = (company) => {
+    setForm(p => ({ ...p, companyCode: company.companyCode }));
+    setCompanyName(company.label);
+    setCompanyResolved(true);
+    setShowCompanySearch(false);
   };
 
   // Load gates for security mobile login
@@ -204,7 +180,7 @@ export default function Login() {
                   key={c.shortname}
                   type="button"
                   onClick={() => handleSelectCompany(c)}
-                  disabled={companySearching}
+                  disabled={false}
                   style={{
                     display:"flex", alignItems:"center", justifyContent:"space-between",
                     padding:"12px 14px", border:"1px solid var(--border)",
@@ -217,9 +193,7 @@ export default function Login() {
                 >
                   <span style={{ display:"flex", alignItems:"center", gap:10 }}>
                     <Building2 size={15} style={{ color:"var(--text3)", flexShrink:0 }}/>
-                    {companySearching && companySearch === c.label
-                      ? <span style={{ color:"var(--text3)" }}>Loading...</span>
-                      : c.label}
+                    {c.label}
                   </span>
                   <ChevronRight size={15} style={{ color:"var(--text3)" }}/>
                 </button>
