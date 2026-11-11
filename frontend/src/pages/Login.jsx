@@ -3,7 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
 import { loginUser, loginSecurity, getGates, getCompanyByShortname } from "../services/authService";
-import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor, Shield, UserCog, Search, Building2 } from "lucide-react";
+import { Eye, EyeOff, LogIn, AlertCircle, Monitor, Shield, UserCog, ChevronRight, Building2 } from "lucide-react";
+
+// Company list — shortname is the @cname value passed to PRW_GetDBDetails SP
+const COMPANIES = [
+  { label: "KRG Power Solar",  shortname: "KRGSolor" },
+  { label: "INDO TEXNOLOGY",   shortname: "Amman1"   },
+  { label: "Suriya SPinners",  shortname: "Amman2"   },
+  { label: "Om Textiles",      shortname: "omtex"    },
+  { label: "KRG SOLAR",        shortname: "krg"      },
+];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -56,23 +65,29 @@ export default function Login() {
       .catch(() => setShowCompanySearch(true));
   }, []);
 
-  const handleCompanySearch = async (e) => {
-    e.preventDefault();
-    if (!companySearch.trim()) return;
+  const handleSelectCompany = async (company) => {
     setCompanySearching(true);
     setCompanySearchError("");
+    setCompanySearch(company.label);
     try {
-      const r = await getCompanyByShortname(companySearch.trim());
+      const r = await getCompanyByShortname(company.shortname);
       if (r.success && r.data) {
         if (r.data.companyCode) setForm(p => ({ ...p, companyCode: r.data.companyCode }));
-        setCompanyName(r.data.companyName || companySearch.trim());
+        setCompanyName(r.data.companyName || company.label);
         setCompanyResolved(true);
         setShowCompanySearch(false);
       } else {
-        setCompanySearchError("Company not found. Please check the name and try again.");
+        // Fallback: use known shortname as companyCode directly
+        setForm(p => ({ ...p, companyCode: company.shortname }));
+        setCompanyName(company.label);
+        setCompanyResolved(true);
+        setShowCompanySearch(false);
       }
     } catch {
-      setCompanySearchError("Company not found. Please check the name and try again.");
+      setForm(p => ({ ...p, companyCode: company.shortname }));
+      setCompanyName(company.label);
+      setCompanyResolved(true);
+      setShowCompanySearch(false);
     } finally {
       setCompanySearching(false);
     }
@@ -171,11 +186,11 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Company search step */}
+        {/* Company selection step */}
         {showCompanySearch && (
-          <form onSubmit={handleCompanySearch} noValidate>
-            <div style={{ marginBottom:8, fontSize:13, color:"var(--text2)", textAlign:"center" }}>
-              Enter your company name to continue
+          <div>
+            <div style={{ marginBottom:14, fontSize:13, color:"var(--text2)", textAlign:"center" }}>
+              Select your company to continue
             </div>
             {companySearchError && (
               <div className="login-error" style={{ marginBottom:12 }}>
@@ -183,26 +198,34 @@ export default function Login() {
                 <span>{companySearchError}</span>
               </div>
             )}
-            <div className="form-group">
-              <label className="form-label">Company Name</label>
-              <div style={{ position:"relative" }}>
-                <Building2 size={15} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"var(--text3)", pointerEvents:"none" }}/>
-                <input
-                  className="form-input"
-                  style={{ paddingLeft:34 }}
-                  value={companySearch}
-                  onChange={e => { setCompanySearch(e.target.value); setCompanySearchError(""); }}
-                  placeholder="e.g. KRG Power Solar"
-                  autoFocus
-                />
-              </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {COMPANIES.map(c => (
+                <button
+                  key={c.shortname}
+                  type="button"
+                  onClick={() => handleSelectCompany(c)}
+                  disabled={companySearching}
+                  style={{
+                    display:"flex", alignItems:"center", justifyContent:"space-between",
+                    padding:"12px 14px", border:"1px solid var(--border)",
+                    borderRadius:"var(--radius-sm)", background:"var(--surface2)",
+                    color:"var(--text1)", cursor:"pointer", fontSize:13, fontWeight:500,
+                    transition:"all .15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor="var(--accent)"}
+                  onMouseLeave={e => e.currentTarget.style.borderColor="var(--border)"}
+                >
+                  <span style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <Building2 size={15} style={{ color:"var(--text3)", flexShrink:0 }}/>
+                    {companySearching && companySearch === c.label
+                      ? <span style={{ color:"var(--text3)" }}>Loading...</span>
+                      : c.label}
+                  </span>
+                  <ChevronRight size={15} style={{ color:"var(--text3)" }}/>
+                </button>
+              ))}
             </div>
-            <button type="submit" className="login-submit" disabled={companySearching || !companySearch.trim()}>
-              {companySearching
-                ? <><span className="spin-sm"/>Searching...</>
-                : <><Search size={16}/>Find Company</>}
-            </button>
-          </form>
+          </div>
         )}
 
         {/* Login form — shown after company resolved */}
