@@ -3,15 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
 import { loginUser, loginSecurity, getGates, getCompanyByShortname } from "../services/authService";
-import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor, Shield, UserCog } from "lucide-react";
+import { Eye, EyeOff, LogIn, AlertCircle, Smartphone, Monitor, Shield, UserCog, Search, Building2 } from "lucide-react";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const { isMobile } = useResponsive();
 
-  // Mobile users can choose: Security Guard or Admin
-  const [mobileRole, setMobileRole] = useState("security"); // "security" | "admin"
+  const [mobileRole, setMobileRole] = useState("security");
 
   const [form, setForm] = useState({
     username:"", password:"", companyCode:"514670", gateId:"", gateName:"",
@@ -24,25 +23,60 @@ export default function Login() {
   const [companyName, setCompanyName]   = useState("");
   const [companyResolved, setCompanyResolved] = useState(false);
 
+  // Company search step (shown when no ?company= param in URL)
+  const [companySearch, setCompanySearch]       = useState("");
+  const [companySearching, setCompanySearching] = useState(false);
+  const [companySearchError, setCompanySearchError] = useState("");
+  const [showCompanySearch, setShowCompanySearch]   = useState(false);
+
   useEffect(() => {
     if (isAuthenticated) navigate("/dashboard", { replace:true });
   }, [isAuthenticated, navigate]);
 
-  // Resolve company from ?company= URL param (e.g. gate.msninfotec.com/login?company=msn)
+  // Resolve company from ?company= URL param
   useEffect(() => {
-    const params   = new URLSearchParams(window.location.search);
+    const params    = new URLSearchParams(window.location.search);
     const shortname = params.get("company");
-    if (!shortname) return;
+    if (!shortname) {
+      // No company in URL — show search step
+      setShowCompanySearch(true);
+      return;
+    }
     getCompanyByShortname(shortname)
       .then(r => {
-        if (r.success && r.data?.companyCode) {
-          setForm(p => ({ ...p, companyCode: r.data.companyCode }));
+        if (r.success && r.data) {
+          if (r.data.companyCode) setForm(p => ({ ...p, companyCode: r.data.companyCode }));
           setCompanyName(r.data.companyName || shortname);
           setCompanyResolved(true);
+          setShowCompanySearch(false);
+        } else {
+          setShowCompanySearch(true);
         }
       })
-      .catch(() => {});
+      .catch(() => setShowCompanySearch(true));
   }, []);
+
+  const handleCompanySearch = async (e) => {
+    e.preventDefault();
+    if (!companySearch.trim()) return;
+    setCompanySearching(true);
+    setCompanySearchError("");
+    try {
+      const r = await getCompanyByShortname(companySearch.trim());
+      if (r.success && r.data) {
+        if (r.data.companyCode) setForm(p => ({ ...p, companyCode: r.data.companyCode }));
+        setCompanyName(r.data.companyName || companySearch.trim());
+        setCompanyResolved(true);
+        setShowCompanySearch(false);
+      } else {
+        setCompanySearchError("Company not found. Please check the name and try again.");
+      }
+    } catch {
+      setCompanySearchError("Company not found. Please check the name and try again.");
+    } finally {
+      setCompanySearching(false);
+    }
+  };
 
   // Load gates for security mobile login
   useEffect(() => {
@@ -136,6 +170,43 @@ export default function Login() {
             Gate Management System
           </div>
         </div>
+
+        {/* Company search step */}
+        {showCompanySearch && (
+          <form onSubmit={handleCompanySearch} noValidate>
+            <div style={{ marginBottom:8, fontSize:13, color:"var(--text2)", textAlign:"center" }}>
+              Enter your company name to continue
+            </div>
+            {companySearchError && (
+              <div className="login-error" style={{ marginBottom:12 }}>
+                <AlertCircle size={15} style={{ flexShrink:0 }}/>
+                <span>{companySearchError}</span>
+              </div>
+            )}
+            <div className="form-group">
+              <label className="form-label">Company Name</label>
+              <div style={{ position:"relative" }}>
+                <Building2 size={15} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"var(--text3)", pointerEvents:"none" }}/>
+                <input
+                  className="form-input"
+                  style={{ paddingLeft:34 }}
+                  value={companySearch}
+                  onChange={e => { setCompanySearch(e.target.value); setCompanySearchError(""); }}
+                  placeholder="e.g. KRG Power Solar"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <button type="submit" className="login-submit" disabled={companySearching || !companySearch.trim()}>
+              {companySearching
+                ? <><span className="spin-sm"/>Searching...</>
+                : <><Search size={16}/>Find Company</>}
+            </button>
+          </form>
+        )}
+
+        {/* Login form — shown after company resolved */}
+        {!showCompanySearch && <>
 
         {/* Mobile role selector */}
         {isMobile && (
@@ -246,6 +317,8 @@ export default function Login() {
               ? <><Shield size={11}/> Security Guard — Visitor &amp; Vehicle entry</>
               : <><UserCog size={11}/> Admin — Full access on mobile</>}
         </div>
+
+        </>}
       </div>
     </div>
   );
