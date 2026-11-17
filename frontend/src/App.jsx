@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { MenuProvider } from "./context/MenuContext";
 import AppLayout    from "./components/AppLayout";
 import Login        from "./pages/Login";
+import Landing      from "./pages/Landing";
 import Dashboard    from "./pages/Dashboard";
 import VisitorList  from "./pages/visitors/VisitorList";
 import VisitorForm  from "./pages/visitors/VisitorForm";
@@ -51,33 +52,34 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public landing page */}
+      <Route path="/" element={<Landing/>}/>
+
+      {/* Auth pages */}
       <Route path="/login" element={<PublicRoute><Login/></PublicRoute>}/>
-      <Route path="/" element={
-        <ProtectedRoute>
-          <MenuProvider><AppLayout/></MenuProvider>
-        </ProtectedRoute>
-      }>
-        <Route index element={<Navigate to="/dashboard" replace/>}/>
-        <Route path="dashboard"             element={<Dashboard/>}/>
-        <Route path="visitors"              element={<VisitorList/>}/>
-        <Route path="visitors/new"          element={<VisitorForm/>}/>
-        <Route path="visitors/edit/:id"     element={<VisitorForm/>}/>
-        <Route path="vehicles"              element={<VehicleList/>}/>
-        <Route path="vehicles/new"          element={<VehicleForm/>}/>
-        <Route path="vehicles/edit/:id"     element={<VehicleForm/>}/>
-        <Route path="setup/gates"           element={<Gates/>}/>
-        <Route path="setup/securities"      element={<Securities/>}/>
-        <Route path="setup/designations"    element={<Designations/>}/>
-        <Route path="setup/locations"       element={<PatrolPoints/>}/>
-        <Route path="setup/patrol-points"   element={<PatrolPoints/>}/>
-        <Route path="setup/cop-vehicles"    element={<CompVehicles/>}/>
-        <Route path="setup/patrol-plan"     element={<PatrolPlan/>}/>
-        <Route path="setup/patrol-schedule" element={<ComingSoon title="Patrol Schedule"/>}/>
-        <Route path="patrol"                element={<SecurityPatrol/>}/>
-        <Route path="users"                 element={<ComingSoon title="User Management"/>}/>
-        <Route path="*"                     element={<Navigate to="/dashboard" replace/>}/>
+
+      {/* Protected app — pathless layout route */}
+      <Route element={<ProtectedRoute><MenuProvider><AppLayout/></MenuProvider></ProtectedRoute>}>
+        <Route path="/dashboard"             element={<Dashboard/>}/>
+        <Route path="/visitors"              element={<VisitorList/>}/>
+        <Route path="/visitors/new"          element={<VisitorForm/>}/>
+        <Route path="/visitors/edit/:id"     element={<VisitorForm/>}/>
+        <Route path="/vehicles"              element={<VehicleList/>}/>
+        <Route path="/vehicles/new"          element={<VehicleForm/>}/>
+        <Route path="/vehicles/edit/:id"     element={<VehicleForm/>}/>
+        <Route path="/setup/gates"           element={<Gates/>}/>
+        <Route path="/setup/securities"      element={<Securities/>}/>
+        <Route path="/setup/designations"    element={<Designations/>}/>
+        <Route path="/setup/locations"       element={<PatrolPoints/>}/>
+        <Route path="/setup/patrol-points"   element={<PatrolPoints/>}/>
+        <Route path="/setup/cop-vehicles"    element={<CompVehicles/>}/>
+        <Route path="/setup/patrol-plan"     element={<PatrolPlan/>}/>
+        <Route path="/setup/patrol-schedule" element={<ComingSoon title="Patrol Schedule"/>}/>
+        <Route path="/patrol"                element={<SecurityPatrol/>}/>
+        <Route path="/users"                 element={<ComingSoon title="User Management"/>}/>
       </Route>
-      <Route path="*" element={<Navigate to="/login" replace/>}/>
+
+      <Route path="*" element={<Navigate to="/" replace/>}/>
     </Routes>
   );
 }
