@@ -9,11 +9,11 @@ const RED = "#c0392b";
 const RED_DARK = "#a93226";
 
 const COMPANIES = [
-  { label: "KRG Power Solar",  companyCode: "5146703" },
-  { label: "INDO TEXNOLOGY",   companyCode: "5146679" },
-  { label: "Suriya SPinners",  companyCode: "5146681" },
-  { label: "Om Textiles",      companyCode: "5146635" },
-  { label: "KRG SOLAR",        companyCode: "5146672" },
+  { label: "KRG Power Solar",  companyCode: "KRGSolor" },
+  { label: "INDO TEXNOLOGY",   companyCode: "Amman1"  },
+  { label: "Suriya SPinners",  companyCode: "Amman2"  },
+  { label: "Om Textiles",      companyCode: "omtex"   },
+  { label: "KRG SOLAR",        companyCode: "krg"     },
 ];
 
 /* ── Shared page wrapper — white bg, full viewport ─────────── */
