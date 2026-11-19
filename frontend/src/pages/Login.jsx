@@ -16,6 +16,83 @@ const COMPANIES = [
   { label: "KRG SOLAR",        companyCode: "krg"     },
 ];
 
+/* ── Company search / type-to-find screen ───────────────────── */
+function CompanySearch({ onSelect }) {
+  const [query, setQuery] = useState("");
+  const [searchError, setSearchError] = useState("");
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const q = query.trim().toLowerCase();
+    if (!q) { setSearchError("Please enter your company name."); return; }
+    const match = COMPANIES.find(c => c.label.toLowerCase().includes(q));
+    if (match) {
+      onSelect(match);
+    } else {
+      setSearchError(`No company found matching "${query}". Please check the name.`);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
+      <div style={{ width: "100%", maxWidth: 440, padding: "0 16px" }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <img src="/msn-logo.png" alt="MSN Infotec"
+            style={{ height: 48, width: "auto" }}
+            onError={e => e.target.style.display = "none"} />
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#222", marginTop: 8 }}>MSN Gate</div>
+          <div style={{ fontSize: 13, color: "#888" }}>Gate Management System</div>
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,.08)" }}>
+          <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 700, color: "#222" }}>Find Your Company</h2>
+          <p style={{ margin: "0 0 24px", fontSize: 13, color: "#888" }}>Type your company name to continue</p>
+
+          <form onSubmit={handleSearch}>
+            <div style={{ position: "relative", marginBottom: 14 }}>
+              <Building2 size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }} />
+              <input
+                autoFocus
+                value={query}
+                onChange={e => { setQuery(e.target.value); setSearchError(""); }}
+                placeholder="e.g. KRG Power Solar"
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  padding: "13px 14px 13px 40px",
+                  border: `1.5px solid ${searchError ? "#fca5a5" : "#e0e0e0"}`,
+                  borderRadius: 8, fontSize: 14, outline: "none",
+                  background: "#fafafa", color: "#222",
+                }}
+              />
+            </div>
+
+            {searchError && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 8, color: RED, fontSize: 13, marginBottom: 14 }}>
+                <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>{searchError}</span>
+              </div>
+            )}
+
+            <button type="submit"
+              style={{
+                width: "100%", padding: "13px 20px", background: RED, color: "#fff",
+                border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              }}>
+              Continue <ArrowRight size={16} />
+            </button>
+          </form>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#aaa" }}>
+          MSN Infotec © {new Date().getFullYear()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Shared page wrapper — white bg, full viewport ─────────── */
 const pageStyle = {
   minHeight: "100vh",
@@ -129,59 +206,14 @@ export default function Login() {
         setError(res.message || "Invalid credentials");
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed. Please check your credentials.");
+      const msg = err.response?.data?.message || err.message || "Login failed. Please check your credentials.";
+      setError(msg);
     } finally { setLoading(false); }
   };
 
   /* ── Company selection screen ───────────────────────────── */
   if (showCompanySearch) {
-    return (
-      <div style={pageStyle}>
-        <div style={{ width: "100%", maxWidth: 480, padding: "0 16px" }}>
-          {/* Logo */}
-          <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <img src="/msn-logo.png" alt="MSN Infotec"
-              style={{ height: 48, width: "auto" }}
-              onError={e => e.target.style.display = "none"} />
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#222", marginTop: 8 }}>MSN Gate</div>
-            <div style={{ fontSize: 13, color: "#888" }}>Gate Management System</div>
-          </div>
-
-          {/* Card */}
-          <div style={{ background: "#fff", borderRadius: 16, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,.08)" }}>
-            <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 700, color: "#222" }}>Find Your Company</h2>
-            <p style={{ margin: "0 0 24px", fontSize: 13, color: "#888" }}>Select your company to access the login page</p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {COMPANIES.map(c => (
-                <button key={c.companyCode} type="button" onClick={() => handleSelectCompany(c)}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "14px 16px", border: "1.5px solid #e8e8e8", borderRadius: 10,
-                    background: "#fff", color: "#222", cursor: "pointer",
-                    fontSize: 14, fontWeight: 500, textAlign: "left", transition: "all .15s",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = RED; e.currentTarget.style.background = "#fdf5f5"; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e8e8e8"; e.currentTarget.style.background = "#fff"; }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ width: 36, height: 36, borderRadius: 8, background: "#fff0ef", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Building2 size={16} style={{ color: RED }} />
-                    </span>
-                    {c.label}
-                  </span>
-                  <ChevronRight size={16} style={{ color: "#bbb" }} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#aaa" }}>
-            MSN Infotec © {new Date().getFullYear()}
-          </div>
-        </div>
-      </div>
-    );
+    return <CompanySearch onSelect={handleSelectCompany} />;
   }
 
   /* ── Login screen — split layout ───────────────────────── */
