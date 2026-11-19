@@ -56,7 +56,7 @@ function CompanySearch({ onSelect }) {
                 autoFocus
                 value={query}
                 onChange={e => { setQuery(e.target.value); setSearchError(""); }}
-                placeholder="e.g. KRG Power Solar"
+                placeholder="e.g. MSN"
                 style={{
                   width: "100%", boxSizing: "border-box",
                   padding: "13px 14px 13px 40px",
