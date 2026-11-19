@@ -21,16 +21,20 @@ function CompanySearch({ onSelect }) {
   const [query, setQuery] = useState("");
   const [searchError, setSearchError] = useState("");
 
+  const matches = query.trim().length > 0
+    ? COMPANIES.filter(c => c.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : [];
+
   const handleSearch = (e) => {
     e.preventDefault();
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) { setSearchError("Please enter your company name."); return; }
-    const match = COMPANIES.find(c => c.label.toLowerCase().includes(q));
-    if (match) {
-      onSelect(match);
-    } else {
-      setSearchError(`No company found matching "${query}". Please check the name.`);
+    if (matches.length === 0) {
+      setSearchError(`No company found matching "${q}". Please check the name.`);
+    } else if (matches.length === 1) {
+      onSelect(matches[0]);
     }
+    // if multiple matches, dropdown is already visible — user must click one
   };
 
   return (
@@ -50,7 +54,7 @@ function CompanySearch({ onSelect }) {
           <p style={{ margin: "0 0 24px", fontSize: 13, color: "#888" }}>Type your company name to continue</p>
 
           <form onSubmit={handleSearch}>
-            <div style={{ position: "relative", marginBottom: 14 }}>
+            <div style={{ position: "relative", marginBottom: matches.length > 0 ? 0 : 14 }}>
               <Building2 size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }} />
               <input
                 autoFocus
@@ -61,11 +65,35 @@ function CompanySearch({ onSelect }) {
                   width: "100%", boxSizing: "border-box",
                   padding: "13px 14px 13px 40px",
                   border: `1.5px solid ${searchError ? "#fca5a5" : "#e0e0e0"}`,
-                  borderRadius: 8, fontSize: 14, outline: "none",
+                  borderRadius: matches.length > 0 ? "8px 8px 0 0" : 8,
+                  fontSize: 14, outline: "none",
                   background: "#fafafa", color: "#222",
                 }}
               />
             </div>
+
+            {/* Dropdown suggestions */}
+            {matches.length > 0 && (
+              <div style={{ border: "1.5px solid #e0e0e0", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 14, overflow: "hidden" }}>
+                {matches.map((c, i) => (
+                  <button key={c.companyCode} type="button" onClick={() => onSelect(c)}
+                    style={{
+                      width: "100%", padding: "12px 16px", border: "none",
+                      borderTop: i > 0 ? "1px solid #f0f0f0" : "none",
+                      background: "#fff", color: "#222", cursor: "pointer",
+                      fontSize: 14, fontWeight: 500, textAlign: "left",
+                      display: "flex", alignItems: "center", gap: 10,
+                      transition: "background .1s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#fdf5f5"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#fff"}
+                  >
+                    <Building2 size={14} style={{ color: RED, flexShrink: 0 }} />
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {searchError && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 8, color: RED, fontSize: 13, marginBottom: 14 }}>
@@ -74,14 +102,16 @@ function CompanySearch({ onSelect }) {
               </div>
             )}
 
-            <button type="submit"
-              style={{
-                width: "100%", padding: "13px 20px", background: RED, color: "#fff",
-                border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              }}>
-              Continue <ArrowRight size={16} />
-            </button>
+            {matches.length !== 1 && (
+              <button type="submit"
+                style={{
+                  width: "100%", padding: "13px 20px", background: RED, color: "#fff",
+                  border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>
+                Continue <ArrowRight size={16} />
+              </button>
+            )}
           </form>
         </div>
 
