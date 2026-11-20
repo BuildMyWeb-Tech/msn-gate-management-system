@@ -23,7 +23,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Cache API responses for offline support
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/res\.cloudinary\.com\/.*/i,
