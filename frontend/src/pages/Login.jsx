@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useResponsive } from "../hooks/useResponsive";
 import { loginUser, loginSecurity, getGates } from "../services/authService";
-import { Eye, EyeOff, AlertCircle, Shield, UserCog, ChevronRight, Building2, ArrowRight, LogIn, Users, Car, ClipboardList } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Shield, UserCog, ChevronRight, Building2, ArrowRight, LogIn, Users, Car, ClipboardList, Download, Share, Plus } from "lucide-react";
 
 const RED = "#c0392b";
 const RED_DARK = "#a93226";
@@ -133,6 +133,27 @@ export default function Login() {
   const [companyResolved, setCompanyResolved] = useState(false);
   const [showCompanySearch, setShowCompanySearch] = useState(false);
   const [focusedField, setFocusedField] = useState("");
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIOSHint, setShowIOSHint] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(display-mode: standalone)").matches) { setIsInstalled(true); return; }
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    setIsIOS(ios);
+    const handler = e => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (isIOS) { setShowIOSHint(h => !h); return; }
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setIsInstalled(true);
+  };
 
   useEffect(() => {
     if (isAuthenticated) navigate("/dashboard", { replace: true });
@@ -205,6 +226,7 @@ export default function Login() {
           res.data.gateName    = null;
           res.data.mobileMenus = null;
         }
+        res.data.companyName = companyName;
         login(res.data);
         navigate("/dashboard", { replace: true });
       } else {
@@ -271,8 +293,32 @@ export default function Login() {
         flex: 1, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: isMobile ? "32px 20px" : "48px 48px",
-        background: "#fff", overflowY: "auto",
+        background: "#fff", overflowY: "auto", position: "relative",
       }}>
+
+        {/* PWA Install button — top right */}
+        {!isInstalled && (installPrompt || isIOS) && (
+          <div style={{ position: "absolute", top: 16, right: 16 }}>
+            <button onClick={handleInstallClick} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", border: `1.5px solid ${RED}`,
+              borderRadius: 20, background: "#fff0ef", color: RED,
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}>
+              {isIOS ? <><Share size={13}/> Add to Home Screen</> : <><Download size={13}/> Install App</>}
+            </button>
+            {isIOS && showIOSHint && (
+              <div style={{
+                position: "absolute", right: 0, top: 42, width: 220,
+                background: "#fff", border: "1px solid #e0e0e0",
+                borderRadius: 10, padding: "10px 14px", boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+                fontSize: 12, color: "#555", lineHeight: 1.5, zIndex: 10,
+              }}>
+                Tap <Share size={11} style={{verticalAlign:"middle",color:RED}}/> <strong>Share</strong> → <Plus size={11} style={{verticalAlign:"middle"}}/> <strong>Add to Home Screen</strong>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mobile logo */}
         {isMobile && (

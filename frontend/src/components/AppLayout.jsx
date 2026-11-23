@@ -202,6 +202,17 @@ export default function AppLayout() {
               <><span className="topbar-sep" style={{margin:"0 4px"}}>/</span>
               <span style={{fontSize:12,color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLabel}</span></>
             )}
+            {user?.companyName&&(
+              <span style={{
+                marginLeft:10,display:"inline-flex",alignItems:"center",gap:4,
+                padding:"3px 10px",borderRadius:20,
+                background:"rgba(192,57,43,0.1)",border:"1px solid rgba(192,57,43,0.2)",
+                fontSize:11,fontWeight:600,color:"#c0392b",whiteSpace:"nowrap",
+              }}>
+                <Building2 size={10} style={{flexShrink:0}}/>
+                {user.companyName}
+              </span>
+            )}
           </div>
           {gateLabel&&(
             <div style={{
