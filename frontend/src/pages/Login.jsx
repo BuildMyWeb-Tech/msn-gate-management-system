@@ -25,7 +25,10 @@ function CompanySearch({ onSelect }) {
     e.preventDefault();
     const q = query.trim();
     if (!q) { setSearchError("Please enter your company name."); return; }
-    const matches = COMPANIES.filter(c => c.label.toLowerCase().includes(q.toLowerCase()));
+    const matches = COMPANIES.filter(c =>
+      c.label.toLowerCase().includes(q.toLowerCase()) ||
+      c.companyCode.toLowerCase().includes(q.toLowerCase())
+    );
     if (matches.length === 0) {
       setSearchError(`No company found matching "${q}". Please check the name.`);
     } else if (matches.length === 1) {
