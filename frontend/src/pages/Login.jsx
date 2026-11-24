@@ -20,6 +20,26 @@ const COMPANIES = [
 function CompanySearch({ onSelect }) {
   const [query, setQuery] = useState("");
   const [searchError, setSearchError] = useState("");
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(display-mode: standalone)").matches) { setIsInstalled(true); return; }
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    setIsIOS(ios);
+    const handler = e => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (isIOS || !installPrompt) { setShowHint(h => !h); return; }
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setIsInstalled(true);
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -39,7 +59,34 @@ function CompanySearch({ onSelect }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
+    <div style={{ minHeight: "100vh", background: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", position: "relative" }}>
+
+      {/* Install App button — top right */}
+      {!isInstalled && (
+        <div style={{ position: "absolute", top: 16, right: 16 }}>
+          <button onClick={handleInstall} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "7px 14px", border: `1.5px solid ${RED}`,
+            borderRadius: 20, background: "#fff0ef", color: RED,
+            fontSize: 12, fontWeight: 600, cursor: "pointer",
+          }}>
+            {isIOS ? <><Share size={13}/> Add to Home Screen</> : <><Download size={13}/> Install App</>}
+          </button>
+          {showHint && (
+            <div style={{
+              position: "absolute", right: 0, top: 42, width: 240,
+              background: "#fff", border: "1px solid #e0e0e0",
+              borderRadius: 10, padding: "10px 14px", boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+              fontSize: 12, color: "#555", lineHeight: 1.5, zIndex: 10,
+            }}>
+              {isIOS
+                ? <>Tap <Share size={11} style={{verticalAlign:"middle",color:RED}}/> <strong>Share</strong> → <Plus size={11} style={{verticalAlign:"middle"}}/> <strong>Add to Home Screen</strong></>
+                : <>Click the <strong>install icon ⊕</strong> in your browser's address bar to install the app.</>}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ width: "100%", maxWidth: 440, padding: "0 16px" }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
