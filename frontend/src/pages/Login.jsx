@@ -148,8 +148,7 @@ export default function Login() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (isIOS) { setShowIOSHint(h => !h); return; }
-    if (!installPrompt) return;
+    if (isIOS || !installPrompt) { setShowIOSHint(h => !h); return; }
     installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
     if (outcome === "accepted") setIsInstalled(true);
@@ -297,7 +296,7 @@ export default function Login() {
       }}>
 
         {/* PWA Install button — top right */}
-        {!isInstalled && (installPrompt || isIOS) && (
+        {!isInstalled && (
           <div style={{ position: "absolute", top: 16, right: 16 }}>
             <button onClick={handleInstallClick} style={{
               display: "flex", alignItems: "center", gap: 6,
@@ -307,14 +306,17 @@ export default function Login() {
             }}>
               {isIOS ? <><Share size={13}/> Add to Home Screen</> : <><Download size={13}/> Install App</>}
             </button>
-            {isIOS && showIOSHint && (
+            {showIOSHint && (
               <div style={{
-                position: "absolute", right: 0, top: 42, width: 220,
+                position: "absolute", right: 0, top: 42, width: 240,
                 background: "#fff", border: "1px solid #e0e0e0",
                 borderRadius: 10, padding: "10px 14px", boxShadow: "0 4px 16px rgba(0,0,0,.12)",
                 fontSize: 12, color: "#555", lineHeight: 1.5, zIndex: 10,
               }}>
-                Tap <Share size={11} style={{verticalAlign:"middle",color:RED}}/> <strong>Share</strong> → <Plus size={11} style={{verticalAlign:"middle"}}/> <strong>Add to Home Screen</strong>
+                {isIOS
+                  ? <>Tap <Share size={11} style={{verticalAlign:"middle",color:RED}}/> <strong>Share</strong> → <Plus size={11} style={{verticalAlign:"middle"}}/> <strong>Add to Home Screen</strong></>
+                  : <>Click the <strong>install icon ⊕</strong> in your browser's address bar to install the app.</>
+                }
               </div>
             )}
           </div>
