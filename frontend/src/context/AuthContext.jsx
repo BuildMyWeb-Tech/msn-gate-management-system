@@ -60,7 +60,8 @@ export function AuthProvider({ children }) {
       token:        data.token,
       userId:       data.userId,
       companyId:    data.companyId,
-      companyName:  data.companyName || null,
+      companyCode:  data.companyCode  || null,
+      companyName:  data.companyName  || null,
       userName:     data.userName,
       securityCode: data.securityCode || null,  // SCode like "S002", only for mobile/security login
       gateId:       data.gateId    || null,

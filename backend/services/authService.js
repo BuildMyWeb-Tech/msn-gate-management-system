@@ -80,7 +80,9 @@ async function loginSecurity({ username, password, companyCode, gateId, gateName
 
 // ── Gate list ─────────────────────────────────────────────────
 async function getGatesForLogin(companyCode) {
-  const companyId = 1;
+  const info = await getCompanyByShortname(companyCode);
+  const companyId = info?.companyId || 0;
+  if (!companyId) return [];
   const rows = await repo.getGatesForLogin(companyId);
   return rows
     .filter(r => r.gateid || r.gname)

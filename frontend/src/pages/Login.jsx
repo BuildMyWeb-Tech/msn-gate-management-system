@@ -10,8 +10,8 @@ const RED_DARK = "#a93226";
 
 const COMPANIES = [
   { label: "KRG Power Solar",  companyCode: "KRGSolor" },
-  { label: "INDO TEXNOLOGY",   companyCode: "Amman1"  },
-  { label: "Suriya SPinners",  companyCode: "Amman2"  },
+  { label: "Amman Textiles Unit1", companyCode: "Amman1"  },
+  { label: "Suriya SPinners",      companyCode: "Amman2"  },
   { label: "Om Textiles",      companyCode: "omtex"   },
   { label: "KRG SOLAR",        companyCode: "krg"     },
 ];
@@ -273,6 +273,7 @@ export default function Login() {
           res.data.mobileMenus = null;
         }
         res.data.companyName = companyName;
+        res.data.companyCode = form.companyCode;
         login(res.data);
         navigate("/dashboard", { replace: true });
       } else {

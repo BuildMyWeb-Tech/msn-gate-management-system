@@ -41,7 +41,7 @@ async function iudPatrolPlan({ mode, userId, planName, uid, companyId, gateUid, 
     .input("Uid",       sql.Int,           uid || 0)
     .input("companyid", sql.Int,           companyId)
     .input("GateUid",   sql.BigInt,        gateUid  || 0)
-    .input("Startby",   sql.Int,           startBy  || 0)
+    .input("duration",   sql.Int,           startBy  || 0)
     .execute("PR_IUD_PatrolPlan");
   const row = result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
   return row;

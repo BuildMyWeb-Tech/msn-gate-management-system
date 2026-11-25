@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../../services/api";
 import Toast from "../../components/Toast";
+import { useAuth } from "../../context/AuthContext";
 import { Plus, Pencil, Trash2, RefreshCw, Shield, X, Save, ChevronUp, ChevronDown } from "lucide-react";
 
 // ── Normalise grid row ───────────────────────────────────────
@@ -144,6 +145,7 @@ function DetailRow({ row, index, points, onSave, onDelete, isNew }) {
 
 // ── Plan Form (Add/Edit) ─────────────────────────────────────
 function PlanForm({ plan, onClose, onSaved }) {
+  const { user } = useAuth();
   const [planName, setPlanName]   = useState(plan?.planName || "");
   const [gateUid, setGateUid]     = useState(plan?.gateUid || 0);
   const [startBy, setStartBy]     = useState(plan?.startBy || "");
@@ -161,9 +163,11 @@ function PlanForm({ plan, onClose, onSaved }) {
     api.get("/patrol/points-combo")
       .then(r => setPoints((r.data?.data||[]).map(normalisePoint)))
       .catch(() => {});
-    api.get("/auth/gates?companyCode=514670")
-      .then(r => setGateList(r.data?.data || []))
-      .catch(() => {});
+    if (user?.companyCode) {
+      api.get(`/auth/gates?companyCode=${encodeURIComponent(user.companyCode)}`)
+        .then(r => setGateList(r.data?.data || []))
+        .catch(() => {});
+    }
   }, []);
 
   // Load existing details when editing
@@ -398,7 +402,11 @@ export default function PatrolPlan() {
     setLoading(true);
     try {
       const r = await api.get("/patrol/plans");
-      setRows((r.data?.data||[]).map(normaliseGrid));
+      const raw = (r.data?.data || []).filter(row => {
+        const msg = String(row.ResponseMessage ?? row.responseMessage ?? "").toLowerCase();
+        return !msg.includes("no data") && !msg.includes("not found") && (row.uid ?? row.Uid ?? row.PlanMUid);
+      });
+      setRows(raw.map(normaliseGrid));
     } catch { setToast({type:"error",msg:"Failed to load patrol plans"}); }
     finally { setLoading(false); }
   }, []);
