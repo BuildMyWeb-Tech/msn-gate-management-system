@@ -548,15 +548,18 @@ function PatrolSession({ session, onBack, setToast }) {
   useEffect(() => {
     api.get("/patrol/plans")
       .then(r => {
-        const all = r.data?.data || [];
+        const raw = (r.data?.data || []).filter(p => {
+          const msg = String(p.ResponseMessage ?? p.responseMessage ?? "").toLowerCase();
+          return !msg.includes("no data") && !msg.includes("not found") && (p.uid ?? p.Uid ?? p.PlanMUid);
+        });
         // Filter by gateId if possible (SP returns GateUid column); fall back to show all
         const gateId = session.gateId || 0;
         const filtered = gateId
-          ? all.filter(p => {
+          ? raw.filter(p => {
               const pGate = Number(p.GateUid ?? p.gateuid ?? p.Gateuid ?? 0);
               return pGate === 0 || pGate === gateId;
             })
-          : all;
+          : raw;
         setPlanList(filtered.map(p => ({
           uid:  Number(p.uid ?? p.Uid ?? p.PlanMUid ?? 0),
           name: p.PlanName ?? p.planname ?? p.planName ?? "",
@@ -778,10 +781,11 @@ export default function SecurityPatrol() {
   // Desktop: load gate list once
   useEffect(() => {
     if (isMobileUser) return;
-    api.get("/auth/gates?companyCode=514670")
+    if (!user?.companyCode) return;
+    api.get(`/auth/gates?companyCode=${encodeURIComponent(user.companyCode)}`)
       .then(r => setGateList(r.data?.data || []))
       .catch(() => {});
-  }, [isMobileUser]);
+  }, [isMobileUser, user?.companyCode]);
 
   const effectiveGateId = isMobileUser ? (user?.gateId || 0) : selectedGateId;
 
